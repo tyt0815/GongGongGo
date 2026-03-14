@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>채용 공고지기</title>
+    <style>
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        .deadline-soon { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    {% macro render_post_table(post_list, title) %}
+    <h2>{{ title }} ({{ post_list|length }})</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>제목</th>
+                <th>마감일</th>
+                <th>링크</th>
+                <th>상태</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for post in post_list %}
+            <tr>
+                <td>{{ post.title }}</td>
+                <td class="deadline-soon">{{ post.deadline }}</td>
+                <td><a href="{{ post.link }}" target="_blank">바로가기</a></td>
+                <td>
+                    <select onchange="updateStatus('{{ post.link }}', this.value)">
+                        <option value="미확인" {% if post.state == '미확인' %}selected{% endif %}>미확인</option>
+                        <option value="지원예정" {% if post.state == '지원예정' %}selected{% endif %}>지원예정</option>
+                        <option value="처리된" {% if post.state == '처리된' %}selected{% endif %}>처리된</option>
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endmacro %}
+
+    {{ render_post_table(upcoming_posts, "접수 예정") }}
+    {{ render_post_table(unread_posts, "미확인") }}
+    {{ render_post_table(processed_posts, "처리된") }}
+
+</body>
+</html>
+
+<script>
+async function updateStatus(link, newState) {
+    const response = await fetch('/update-status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ link: link, state: newState })
+    });
+    
+    if (response.ok) {
+        alert("상태가 변경되었습니다.");
+        location.reload(); // 성공 시 리스트 갱신
+    } else {
+        alert("오류가 발생했습니다.");
+    }
+}
+</script>
