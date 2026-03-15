@@ -1,12 +1,14 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Page
 import json
 import os
 from datetime import datetime
 
 # --- 설정 변수 (이곳을 직접 수정하세요) ---
 TARGET_URL = {
-    "중앙 공기업" : "https://cafe.naver.com/f-e/cafes/21737991/menus/193",
-    "지방 공기업" : "https://cafe.naver.com/f-e/cafes/21737991/menus/189",
+    "중앙공기업" : "https://cafe.naver.com/f-e/cafes/21737991/menus/193",
+    "지방공기업" : "https://cafe.naver.com/f-e/cafes/21737991/menus/189",
+    "대학/기타기관" : 'https://cafe.naver.com/f-e/cafes/21737991/menus/232',
+    "인턴/계약직" : 'https://cafe.naver.com/f-e/cafes/21737991/menus/198',
 }
 
 def generate_css_selector(idx: int, first_page: bool) -> str:
@@ -41,24 +43,33 @@ def parse_deadline(deadline_str: str) -> str:
         return clean_str
 
 def clean_post_data(post_data: list) -> list:
-    # 비교를 위해 오늘 날짜를 문자열(YYYY.MM.DD)로 변환
     today_str = datetime.now().strftime("%Y.%m.%d")
     final_data = []
+    seen = set()  # 중복 체크를 위한 집합
 
     for post in post_data:
+        title = post["title"]
         deadline = post["deadline"]
         
+        # --- 추가된 중복 체크 로직 ---
+        # 제목과 마감일이 모두 같으면 이미 처리한 공고로 간주
+        post_identifier = (title, deadline)
+        if post_identifier in seen:
+            continue
+        # --------------------------
+
         # 1. 날짜 형식이 아닌 경우(예: "채용시 마감")는 무조건 유지
         if len(deadline.split('.')) != 3:
             final_data.append(post)
+            seen.add(post_identifier) # 체크 완료 표시
             continue
             
         # 2. 날짜가 지났는지 비교
-        # 문자열 비교(YYYY.MM.DD)는 날짜 객체 비교와 동일한 결과를 줍니다.
         if deadline >= today_str:
             final_data.append(post)
+            seen.add(post_identifier) # 체크 완료 표시
         else:
-            print(f"[!] 마감된 공고 제거: {post['title']} (마감일: {deadline})")
+            print(f"[!] 마감된 공고 제거: {title} (마감일: {deadline})")
     
     return final_data
 
@@ -93,73 +104,78 @@ def save_json(file_path, data):
     except Exception as e:
         print(f"[!] JSON 파일 저장 중 오류 발생: {e}")
 
-def run_crawler():
+def run_crawler(page: Page):
+    file_path = os.path.join("data", "job_posts.json")
+    existing_posts = load_json(file_path)
+    existing_links = {post["link"] for post in existing_posts}
+    all_new_posts = []
+
+    for category, url in TARGET_URL.items():
+        stop_category = False  # 해당 카테고리 중단 플래그
+
+        print(f"\n[{category}] 크롤링 시작...")
+
+        for page_num in range(1, 10):
+            if stop_category: break # 이전 페이지에서 중복 발견 시 다음 페이지도 스킵
+
+            page_url = f"{url}?viewType=L&page={page_num}"
+            page.goto(page_url, wait_until="networkidle")
+            first_page = (page_num == 1)
+            
+            
+            for post_idx in range(1, 15):
+                try:
+                    css_selector = generate_css_selector(post_idx, first_page)
+
+                    # 게시글 정보 크롤링 시도
+                    page.wait_for_selector(css_selector, timeout=10000)
+                    element = page.query_selector(css_selector)
+
+                    link = element.get_attribute("href")
+
+                    title = element.inner_text().strip()
+
+                    deadline_start_idx = title.rfind("(")
+                    deadline_end_idx = title.rfind(")")
+                    deadline = parse_deadline(title[deadline_start_idx + 1 : deadline_end_idx])
+
+                    title = title[:deadline_start_idx].strip()
+
+                    # --- 중복 체크 로직 ---
+                    if link in existing_links:
+                        stop_category = True
+                        break 
+                    # ---------------------
+
+                    post_info = { 
+                        "category": category,
+                        "title": title,
+                        "deadline": deadline,
+                        "link": link,
+                        "state" : "안읽음",
+                    }
+                    all_new_posts.append(post_info)
+                except Exception:
+                    break
+
+    posts_data = clean_post_data(all_new_posts + existing_posts)
+    save_json(file_path, posts_data)
+
+    max_title_length = 30
+    for post in all_new_posts:
+        title = post["title"]
+        deadline = post["deadline"]
+        if len(title) > max_title_length:
+            print(f"[+] {title[:max_title_length]}... (마감: {deadline})")
+        else:
+            print(f"[+] {title} (마감: {deadline})")
+    print(f"총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
+
+    page.close()
+
+if __name__ == "__main__":
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
-
-        file_path = os.path.join("data", "job_posts.json")
-        existing_posts = load_json(file_path)
-        existing_links = {post["link"] for post in existing_posts}
-        all_new_posts = []
-
-        for category, url in TARGET_URL.items():
-            stop_category = False  # 해당 카테고리 중단 플래그
-
-            print(f"\n[{category}] 크롤링 시작...")
-
-            for page_num in range(1, 10):
-                if stop_category: break # 이전 페이지에서 중복 발견 시 다음 페이지도 스킵
-
-                page_url = f"{url}?viewType=L&page={page_num}"
-                page.goto(page_url, wait_until="networkidle")
-                first_page = (page_num == 1)
-                
-                
-                for post_idx in range(1, 15):
-                    try:
-                        css_selector = generate_css_selector(post_idx, first_page)
-
-                        # 게시글 정보 크롤링 시도
-                        page.wait_for_selector(css_selector, timeout=10000)
-                        element = page.query_selector(css_selector)
-
-                        link = element.get_attribute("href")
-                        # --- 중복 체크 로직 ---
-                        if link in existing_links:
-                            stop_category = True
-                            break 
-                        # ---------------------
-
-                        title = element.inner_text().strip()
-
-                        deadline = parse_deadline(title[title.rfind("(") + 1 : title.rfind(")")])
-
-                        post_info = { 
-                            "category": category,
-                            "title": title,
-                            "deadline": deadline,
-                            "link": link,
-                            "state" : "안읽음",
-                        }
-
-                        max_title_length = 30
-                        if len(title) > max_title_length:
-                            print(f"[+] {title[:max_title_length]}... (마감: {deadline})")
-                        else:
-                            print(f"[+] {title} (마감: {deadline})")
-                        all_new_posts.append(post_info)
-                    except Exception:
-                        break
-
-        existing_posts = clean_post_data(existing_posts)
-        all_new_posts = clean_post_data(all_new_posts)
-        posts_data = all_new_posts + existing_posts
-        save_json(file_path, posts_data)
-        print(f"총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
-
-        browser.close()
-
-if __name__ == "__main__":
-    run_crawler()
+        run_crawler(page)

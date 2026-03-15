@@ -8,10 +8,10 @@
         th { background-color: #f4f4f4; }
         
         /* 컬럼별 크기 고정 */
-        th:nth-child(2), td:nth-child(2) { width: 110px; text-align: center; } /* 마감일 */
+        th:nth-child(3), td:nth-child(3) { width: 110px; text-align: center; } /* 마감일 */
         /* 상태 전이 버튼 */
-        th:nth-child(3) { width: 100px; text-align: center; } 
-        td:nth-child(3) { 
+        th:nth-child(1) { width: 100px; text-align: center; } 
+        td:nth-child(1) { 
             width: 100px; 
             text-align: center; 
             display: flex;          /* 가로 정렬 시작 */
@@ -21,7 +21,7 @@
         }
         
         /* 제목은 남은 공간 모두 차지 + 말줄임표 처리 */
-        td:nth-child(1) { white-space: nowrap; text-overflow: ellipsis; }
+        td:nth-child(2) { white-space: nowrap; text-overflow: ellipsis; }
         
         .deadline-soon { color: red; font-weight: bold; }
 
@@ -37,10 +37,7 @@
             text-decoration: underline; /* 밑줄 표시 */
         }
 
-        /* 이미 방문한 링크의 색상도 동일하게 유지 */
-        a:visited {
-            color: #333;
-        }
+        a:visited { color: #551a8b; } /* 브라우저 기본값과 유사하지만 조금 더 세련됨 */
 
         /* 버튼 스타일 */
         button {
@@ -62,30 +59,32 @@
     <table>
         <thead>
             <tr>
+                <th></th>
                 <th>제목</th>
                 <th>마감일</th>
-                <th></th>
             </tr>
         </thead>
         {% macro render_status_buttons(post) %}
-            {% if post.state == '안읽음' %}
+            {% if post.state == '지원 예정' %}
+            <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
+            <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
+            {% elif post.state == '안읽음' %}
                 <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
                 <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
-            {% elif post.state == '지원 예정' %}
-                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
             {% else %}
-                <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
+            <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
+                <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
             {% endif %}
         {% endmacro %}
 
         <tbody>
             {% for post in post_list %}
             <tr>
-                <td><a href="{{ post.link }}" target="_blank">{{ post.title }}</a></td>
-                <td class="deadline-soon">{{ post.deadline }}</td>
                 <td>
                     {{ render_status_buttons(post) }}
                 </td>
+                <td><a href="{{ post.link }}" target="_blank">{{ post.title }}</a></td>
+                <td class="deadline-soon">{{ post.deadline }}</td>
             </tr>
             {% endfor %}
         </tbody>

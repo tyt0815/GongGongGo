@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+
+from playwright.sync_api import sync_playwright
+
 import json
 import os
 
@@ -37,17 +40,27 @@ def update_status(data: StatusUpdate):
 @app.get("/")
 def home(request: Request):
     # JSON 파일 읽기 (없으면 빈 리스트)
-    posts = []
+    raw_posts = []
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            posts = json.load(f)
+            raw_posts = json.load(f)
 
-    # 필터링할 키워드 리스트
-    keywords = ['전산', 'ICT', 'IT']
+    keywords = [
+        '대구',
+
+        '한국가스공사', '신용보증기금', '한국교육학술정보원', '한국뇌연구원', '한국부동산원',
+        '한국사학진흥재단', '한국산업기술기획평가원', '한국산업단지공단', '한국지능정보사회진흥원', '한국장학재단', 
+        '농협',
+
+        '전산', 'ICT', 'IT', '정보보호', '디지털', '정보보안',
+        '컴퓨터', '소프트웨어', 'SW', '네트워크', '데이터', '인공지능', 'AI', '머신러닝', '딥러닝',
+        '프로그래밍', '백엔드', '프론트엔드', '풀스택', 
+        '클라우드', '서버', 'DB', '데이터베이스', '플랫폼', '시스템',
+    ]
 
     filtered_posts = [
-        p for p in posts 
-        if '신입' in p['title'] and any(k.lower() in p['title'].lower() for k in keywords)
+        p for p in raw_posts 
+        if any(k.lower() in p['title'].lower() for k in keywords)
     ]
             
     # 정렬: 마감일 기준 오름차순 (임박순)
@@ -73,7 +86,11 @@ def home(request: Request):
     })
 
 if __name__ == "__main__":
-    run_crawler()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        run_crawler(page)
 
     import uvicorn
     # 실행 시 브라우저에서 http://127.0.0.1:8000 접속
