@@ -4,11 +4,13 @@ from pydantic import BaseModel
 import json
 import os
 
+from src.gongjoonmo_crawler import run_crawler
+
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # 데이터 파일 경로
-DATA_FILE = "data/중앙 공기업.json"
+DATA_FILE = "data/job_posts.json"
 
 class StatusUpdate(BaseModel):
     link: str
@@ -49,11 +51,19 @@ def home(request: Request):
     ]
             
     # 정렬: 마감일 기준 오름차순 (임박순)
-    filtered_posts = sorted(filtered_posts, key=lambda x: x.get("deadline", "9999.99.99"))
+    # 1순위: 마감일(deadline) 오름차순, 2순위: 제목(title) 오름차순
+    filtered_posts = sorted(
+        filtered_posts, 
+        key=lambda x: (x.get("deadline", "9999.99.99"), x.get("title", ""))
+    )
     
-    upcoming_posts = [p for p in filtered_posts if p.get("state") == "접수 예정"]
+    upcoming_posts = [p for p in filtered_posts if p.get("state") == "지원 예정"]
     unread_posts = [p for p in filtered_posts if p.get("state") == "안읽음"]
     processed_posts = [p for p in filtered_posts if p.get("state") == "완료"]
+    undefined_posts = [p for p in filtered_posts if p.get("state") not in ["지원 예정", "안읽음", "완료"]]
+    
+    for p in undefined_posts:
+        print(f"[!] 상태 미정 공고: {p['title']} (링크: {p['link']})")
     
     return templates.TemplateResponse("index.html", {
         "request": request, 
@@ -63,6 +73,8 @@ def home(request: Request):
     })
 
 if __name__ == "__main__":
+    run_crawler()
+
     import uvicorn
     # 실행 시 브라우저에서 http://127.0.0.1:8000 접속
     uvicorn.run(app, host="127.0.0.1", port=8000)

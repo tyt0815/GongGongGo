@@ -3,14 +3,60 @@
 <head>
     <title>채용 공고지기</title>
     <style>
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; overflow: hidden; }
         th { background-color: #f4f4f4; }
+        
+        /* 컬럼별 크기 고정 */
+        th:nth-child(2), td:nth-child(2) { width: 110px; text-align: center; } /* 마감일 */
+        /* 상태 전이 버튼 */
+        th:nth-child(3) { width: 100px; text-align: center; } 
+        td:nth-child(3) { 
+            width: 100px; 
+            text-align: center; 
+            display: flex;          /* 가로 정렬 시작 */
+            justify-content: center; 
+            gap: 2px; 
+            align-items: center;    /* 버튼을 세로로도 중앙 정렬하려면 추가 */
+        }
+        
+        /* 제목은 남은 공간 모두 차지 + 말줄임표 처리 */
+        td:nth-child(1) { white-space: nowrap; text-overflow: ellipsis; }
+        
         .deadline-soon { color: red; font-weight: bold; }
+
+        /* 모든 a 태그의 기본 스타일 */
+        a {
+            text-decoration: none; /* 밑줄 제거 */
+            color: #333;           /* 텍스트 색상 (검정색 계열) */
+        }
+
+        /* 마우스를 올렸을 때 하이라이트 */
+        a:hover {
+            color: #007bff;        /* 마우스 올리면 파란색으로 변하게 */
+            text-decoration: underline; /* 밑줄 표시 */
+        }
+
+        /* 이미 방문한 링크의 색상도 동일하게 유지 */
+        a:visited {
+            color: #333;
+        }
+
+        /* 버튼 스타일 */
+        button {
+            width: 48%;                /* 50%보다 조금 작게 설정 */
+            padding: 5px 0;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-size: 11px;           /* 글자가 작으면 크기를 조금 줄임 */
+        }
+
+        button:hover { background-color: #e0e0e0; }
     </style>
 </head>
 <body>
-
     {% macro render_post_table(post_list, title) %}
     <h2>{{ title }} ({{ post_list|length }})</h2>
     <table>
@@ -18,22 +64,27 @@
             <tr>
                 <th>제목</th>
                 <th>마감일</th>
-                <th>링크</th>
-                <th>상태</th>
+                <th></th>
             </tr>
         </thead>
+        {% macro render_status_buttons(post) %}
+            {% if post.state == '안읽음' %}
+                <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
+                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
+            {% elif post.state == '지원 예정' %}
+                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
+            {% else %}
+                <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
+            {% endif %}
+        {% endmacro %}
+
         <tbody>
             {% for post in post_list %}
             <tr>
-                <td>{{ post.title }}</td>
+                <td><a href="{{ post.link }}" target="_blank">{{ post.title }}</a></td>
                 <td class="deadline-soon">{{ post.deadline }}</td>
-                <td><a href="{{ post.link }}" target="_blank">바로가기</a></td>
                 <td>
-                    <select onchange="updateStatus('{{ post.link }}', this.value)">
-                        <option value="미확인" {% if post.state == '미확인' %}selected{% endif %}>미확인</option>
-                        <option value="지원예정" {% if post.state == '지원예정' %}selected{% endif %}>지원예정</option>
-                        <option value="처리된" {% if post.state == '처리된' %}selected{% endif %}>처리된</option>
-                    </select>
+                    {{ render_status_buttons(post) }}
                 </td>
             </tr>
             {% endfor %}
@@ -41,9 +92,9 @@
     </table>
     {% endmacro %}
 
-    {{ render_post_table(upcoming_posts, "접수 예정") }}
-    {{ render_post_table(unread_posts, "미확인") }}
-    {{ render_post_table(processed_posts, "처리된") }}
+    {{ render_post_table(upcoming_posts, "지원 예정") }}
+    {{ render_post_table(unread_posts, "안읽음") }}
+    {{ render_post_table(processed_posts, "완료") }}
 
 </body>
 </html>
@@ -57,7 +108,6 @@ async function updateStatus(link, newState) {
     });
     
     if (response.ok) {
-        alert("상태가 변경되었습니다.");
         location.reload(); // 성공 시 리스트 갱신
     } else {
         alert("오류가 발생했습니다.");

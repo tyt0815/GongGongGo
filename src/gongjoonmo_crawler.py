@@ -99,11 +99,12 @@ def run_crawler():
         context = browser.new_context()
         page = context.new_page()
 
+        file_path = os.path.join("data", "job_posts.json")
+        existing_posts = load_json(file_path)
+        existing_links = {post["link"] for post in existing_posts}
+        all_new_posts = []
+
         for category, url in TARGET_URL.items():
-            file_path = os.path.join("data", category + ".json")  # data 폴더 안에 저장
-            existing_posts = load_json(file_path)
-            existing_links = {post["link"] for post in existing_posts}
-            all_new_posts = []
             stop_category = False  # 해당 카테고리 중단 플래그
 
             print(f"\n[{category}] 크롤링 시작...")
@@ -136,22 +137,27 @@ def run_crawler():
                         deadline = parse_deadline(title[title.rfind("(") + 1 : title.rfind(")")])
 
                         post_info = { 
-                            "link": link,
+                            "category": category,
                             "title": title,
                             "deadline": deadline,
-                            "state" : "안읽음"
+                            "link": link,
+                            "state" : "안읽음",
                         }
 
-                        print(f"[+] {title}")
+                        max_title_length = 30
+                        if len(title) > max_title_length:
+                            print(f"[+] {title[:max_title_length]}... (마감: {deadline})")
+                        else:
+                            print(f"[+] {title} (마감: {deadline})")
                         all_new_posts.append(post_info)
                     except Exception:
                         break
 
-            existing_posts = clean_post_data(existing_posts)
-            all_new_posts = clean_post_data(all_new_posts)
-            posts_data = all_new_posts + existing_posts
-            save_json(file_path, posts_data)
-            print(f"총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
+        existing_posts = clean_post_data(existing_posts)
+        all_new_posts = clean_post_data(all_new_posts)
+        posts_data = all_new_posts + existing_posts
+        save_json(file_path, posts_data)
+        print(f"총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
 
         browser.close()
 
