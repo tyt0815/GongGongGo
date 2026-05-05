@@ -66,13 +66,13 @@
         </thead>
         {% macro render_status_buttons(post) %}
             {% if post.state == '지원 예정' %}
-            <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
-            <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
-            {% elif post.state == '안읽음' %}
+                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
+                <button onclick="updateStatus('{{ post.link }}', '대기')">대기</button>
+            {% elif post.state == '대기' %}
                 <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
                 <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
             {% else %}
-            <button onclick="updateStatus('{{ post.link }}', '안읽음')">초기화</button>
+                <button onclick="updateStatus('{{ post.link }}', '대기')">대기</button>
                 <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
             {% endif %}
         {% endmacro %}
@@ -92,7 +92,7 @@
     {% endmacro %}
 
     {{ render_post_table(upcoming_posts, "지원 예정") }}
-    {{ render_post_table(unread_posts, "안읽음") }}
+    {{ render_post_table(unread_posts, "대기") }}
     {{ render_post_table(processed_posts, "완료") }}
 
 </body>

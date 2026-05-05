@@ -7,6 +7,8 @@ from playwright.sync_api import sync_playwright
 import json
 import os
 
+import uvicorn
+
 from src.gongjoonmo_crawler import run_crawler
 
 app = FastAPI()
@@ -14,6 +16,70 @@ templates = Jinja2Templates(directory="templates")
 
 # 데이터 파일 경로
 DATA_FILE = "data/job_posts.json"
+
+# def is_target_post(title):
+#     keywords_list = []
+
+#     keywords_list.append([
+#         '인턴', '신입'
+#     ])
+
+#     keywords_list.append([
+#         '대구', '한국가스공사', '신용보증기금', '한국교육학술정보원', '한국뇌연구원', '한국부동산원',
+#         '한국사학진흥재단', '한국산업기술기획평가원', '한국산업단지공단', '한국지능정보사회진흥원', '한국장학재단',
+
+#         '전산', 'ICT', 'IT', '디지털',
+#         '컴퓨터', '소프트웨어', 'SW', '네트워크', '데이터', '인공지능', 'AI', '머신러닝', '딥러닝',
+#         '프로그래밍', '백엔드', '프론트엔드', '풀스택', 
+#         '클라우드', '서버', 'DB', '데이터베이스', '플랫폼', '시스템',
+#     ])
+
+#     is_target = True
+
+#     title_lower = title.lower()
+#     for keywords in keywords_list:
+#         is_target = is_target and any(k.lower() in title_lower for k in keywords)
+#         if not is_target:
+#             break
+
+#     return is_target
+
+def is_target_post(title):
+    title_lower = title.lower()
+
+    # 1. 기관/지역 키워드 (대구 및 특정 공사/재단)
+    institutions = [
+        '대구', '한국가스공사', '신용보증기금', '한국교육학술정보원', '한국뇌연구원', '한국부동산원',
+        '한국사학진흥재단', '한국산업기술기획평가원', '한국산업단지공단', '한국지능정보사회진흥원', '한국장학재단'
+    ]
+    
+    # 2. 직무 키워드
+    tech_roles = [
+        '전산', 'ict', 'it', '디지털', '컴퓨터', '소프트웨어', 'sw', '네트워크', 
+        '데이터', '인공지능', 'ai', '머신러닝', '딥러닝', '프로그래밍', '백엔드', 
+        '프론트엔드', '풀스택', '클라우드', '서버', 'db', '데이터베이스', '플랫폼', '시스템'
+    ]
+
+    # 키워드 포함 여부 확인 함수
+    contains_inst = any(k.lower() in title_lower for k in institutions)
+    contains_tech = any(k.lower() in title_lower for k in tech_roles)
+    
+    has_intern = '인턴' in title_lower
+    has_newcomer = '신입' in title_lower
+    has_regular = '정규직' in title_lower
+
+    # 조건 로직
+    # A. 특정 기관이 포함된 경우: '인턴' 또는 '신입'이 있으면 True
+    if contains_inst:
+        if has_intern or has_newcomer:
+            return True
+
+    # B. 그 외 직무 키워드가 포함된 경우: '신입'과 '정규직'이 모두 있어야 True
+    if contains_tech:
+        if has_newcomer and has_regular:
+            return True
+
+    return False
 
 class StatusUpdate(BaseModel):
     link: str
@@ -45,23 +111,7 @@ def home(request: Request):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             raw_posts = json.load(f)
 
-    keywords = [
-        '대구',
-
-        '한국가스공사', '신용보증기금', '한국교육학술정보원', '한국뇌연구원', '한국부동산원',
-        '한국사학진흥재단', '한국산업기술기획평가원', '한국산업단지공단', '한국지능정보사회진흥원', '한국장학재단', 
-        '농협',
-
-        '전산', 'ICT', 'IT', '정보보호', '디지털', '정보보안',
-        '컴퓨터', '소프트웨어', 'SW', '네트워크', '데이터', '인공지능', 'AI', '머신러닝', '딥러닝',
-        '프로그래밍', '백엔드', '프론트엔드', '풀스택', 
-        '클라우드', '서버', 'DB', '데이터베이스', '플랫폼', '시스템',
-    ]
-
-    filtered_posts = [
-        p for p in raw_posts 
-        if any(k.lower() in p['title'].lower() for k in keywords)
-    ]
+    filtered_posts = [p for p in raw_posts if is_target_post(p["title"])]
             
     # 정렬: 마감일 기준 오름차순 (임박순)
     # 1순위: 마감일(deadline) 오름차순, 2순위: 제목(title) 오름차순
@@ -71,9 +121,9 @@ def home(request: Request):
     )
     
     upcoming_posts = [p for p in filtered_posts if p.get("state") == "지원 예정"]
-    unread_posts = [p for p in filtered_posts if p.get("state") == "안읽음"]
+    unread_posts = [p for p in filtered_posts if p.get("state") == "대기"]
     processed_posts = [p for p in filtered_posts if p.get("state") == "완료"]
-    undefined_posts = [p for p in filtered_posts if p.get("state") not in ["지원 예정", "안읽음", "완료"]]
+    undefined_posts = [p for p in filtered_posts if p.get("state") not in ["지원 예정", "대기", "완료"]]
     
     for p in undefined_posts:
         print(f"[!] 상태 미정 공고: {p['title']} (링크: {p['link']})")
@@ -92,6 +142,5 @@ if __name__ == "__main__":
         page = context.new_page()
         run_crawler(page)
 
-    import uvicorn
-    # 실행 시 브라우저에서 http://127.0.0.1:8000 접속
+    
     uvicorn.run(app, host="127.0.0.1", port=8000)

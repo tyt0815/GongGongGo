@@ -88,40 +88,51 @@ def load_json(file_path):
 
 def save_json(file_path, data):
     """
-    딕셔너리 리스트를 JSON 파일로 저장합니다.
+    임시 파일에 저장 후 원본 파일과 교체(Atomic Save)하여 데이터 손실을 방지합니다.
     """
+    tmp_path = file_path + ".tmp"
+    
     try:
-        # 디렉토리가 없으면 생성 (안전장치)
+        # 1. 디렉토리 생성
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            # indent=4: 가독성을 위해 들여쓰기 적용
-            # ensure_ascii=False: 한글 깨짐 방지
+        # 2. 임시 파일에 데이터 쓰기
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
+            # 버퍼 비우기 (운영체제가 파일에 물리적으로 쓰도록 강제)
+            f.flush()
+            os.fsync(f.fileno())
+            
+        # 3. 임시 파일을 원본 파일로 원자적 교체
+        # 이 작업은 찰나의 순간에 일어나며, 중간에 끊겨도 데이터는 원본 그대로 유지됩니다.
+        os.replace(tmp_path, file_path)
             
         print(f"[+] 데이터 저장 완료: {file_path}")
         
     except Exception as e:
         print(f"[!] JSON 파일 저장 중 오류 발생: {e}")
+        # 오류 발생 시 임시 파일이 남아있다면 삭제하여 정리
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
-def run_crawler(page: Page):
+def run_crawler(page: Page, early_stop: bool = True):
     file_path = os.path.join("data", "job_posts.json")
     existing_posts = load_json(file_path)
     existing_links = {post["link"] for post in existing_posts}
+    existing_titles = {post["title"] for post in existing_posts}    
     all_new_posts = []
 
     for category, url in TARGET_URL.items():
         stop_category = False  # 해당 카테고리 중단 플래그
 
-        print(f"\n[{category}] 크롤링 시작...")
+        print(f"[{category}] 크롤링 시작...")
 
-        for page_num in range(1, 10):
-            if stop_category: break # 이전 페이지에서 중복 발견 시 다음 페이지도 스킵
+        for page_num in range(1, 30):
+            if stop_category and early_stop: break # 이전 페이지에서 중복 발견 시 다음 페이지도 스킵
 
             page_url = f"{url}?viewType=L&page={page_num}"
             page.goto(page_url, wait_until="networkidle")
             first_page = (page_num == 1)
-            
             
             for post_idx in range(1, 15):
                 try:
@@ -146,21 +157,25 @@ def run_crawler(page: Page):
                         stop_category = True
                         break 
                     # ---------------------
+                    if title in existing_titles:
+                        continue
 
                     post_info = { 
                         "category": category,
                         "title": title,
                         "deadline": deadline,
                         "link": link,
-                        "state" : "안읽음",
+                        "state" : "대기",
                     }
                     all_new_posts.append(post_info)
                 except Exception:
-                    break
+                    print(f"[!] 게시글 정보 크롤링 실패")
+                    return
 
     posts_data = clean_post_data(all_new_posts + existing_posts)
-    save_json(file_path, posts_data)
 
+    # Log
+    print(f"\n[+] 총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
     max_title_length = 30
     for post in all_new_posts:
         title = post["title"]
@@ -169,9 +184,9 @@ def run_crawler(page: Page):
             print(f"[+] {title[:max_title_length]}... (마감: {deadline})")
         else:
             print(f"[+] {title} (마감: {deadline})")
-    print(f"총 {len(all_new_posts)}개의 새로운 공고를 저장했습니다.")
 
-    page.close()
+    print()
+    save_json(file_path, posts_data)
 
 if __name__ == "__main__":
     with sync_playwright() as p:
