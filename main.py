@@ -6,16 +6,19 @@ from playwright.sync_api import sync_playwright
 
 import json
 import os
+import time
 
 import uvicorn
 
 from src.gongjoonmo_crawler import run_crawler
 
-app = FastAPI()
-templates = Jinja2Templates(directory="./templates")
-
 # 데이터 파일 경로
-DATA_FILE = "data/job_posts.json"
+CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(CUR_DIR, "data", "job_posts.json")
+
+app = FastAPI()
+templates = Jinja2Templates(directory=os.path.join(CUR_DIR, "templates"))
+
 
 def is_target_post(title):
     title_lower = title.lower()
@@ -117,7 +120,15 @@ if __name__ == "__main__":
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
-        run_crawler(page)
 
+        # 네트워크 연결 대기
+        for _ in range(60):
+            try:
+                page.goto('google.com')
+                run_crawler(page, DATA_FILE)
+                break
+            except Exception as e:
+                print(f"[!] 네트워크 연결 대기 중: {e}")
+                time.sleep(1)
     
     uvicorn.run(app, host="127.0.0.1", port=8000)

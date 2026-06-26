@@ -1,6 +1,7 @@
 from playwright.sync_api import sync_playwright, Page
 import json
 import os
+import sys
 from datetime import datetime
 
 # --- 설정 변수 (이곳을 직접 수정하세요) ---
@@ -115,8 +116,8 @@ def save_json(file_path, data):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-def run_crawler(page: Page, early_stop: bool = True):
-    file_path = os.path.join("data", "job_posts.json")
+def run_crawler(page: Page, file_path, early_stop: bool = True):
+    # file_path = os.path.join("data", "job_posts.json")
     existing_posts = load_json(file_path)
     existing_links = {post["link"] for post in existing_posts}
     existing_titles = {post["title"] for post in existing_posts}    
@@ -187,10 +188,3 @@ def run_crawler(page: Page, early_stop: bool = True):
 
     print()
     save_json(file_path, posts_data)
-
-if __name__ == "__main__":
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
-        run_crawler(page)

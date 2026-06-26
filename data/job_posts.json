@@ -1,5 +1,103 @@
 [
     {
+        "category": "중앙공기업",
+        "title": "[식품의약품안전처 의료기기안전평가과 채용] 무기계약직 신입/경력 (심사원)",
+        "deadline": "2026.07.02",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790401?boardtype=L&menuid=193&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "지방공기업",
+        "title": "[강원특별자치도 영월의료원 채용] 정규직 신입 (난방기사)",
+        "deadline": "2026.07.06",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790398?boardtype=L&menuid=189&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[국립현대미술관 채용] 무기계약직 신입/경력 (조경/기계/시설관리)",
+        "deadline": "2026.07.03",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790402?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[한국환경연구원 채용] 체험형인턴 (행정-장애)",
+        "deadline": "2026.07.13",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790395?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[한국도로공사 연수원 채용] 계약직 신입 (하계시설관리/객실청소)",
+        "deadline": "2026.07.03",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790393?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[한국폴리텍대학 대구캠퍼스 채용] 무기계약직 신입 (조리)",
+        "deadline": "2026.07.13",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790391?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "★총15명 [오송첨단의료산업진흥재단 채용] 계약직 신입/경력 (계약검토/행정/기계/의약품품질분석/의료기기HW설계/세포배양/유효성평가/미생물시험/교육운영/AI신약개발/비임상유효성/영장류)",
+        "deadline": "2026.07.10",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790390?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "지방공기업",
+        "title": "★총12명 [의왕도시공사 채용] 정규직/무기계약직 신입/경력 (행정/시설행정/신사업발굴/개발사업관리/미화/운전/민원안내/주차관리)",
+        "deadline": "2026.07.16",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790363?boardtype=L&menuid=189&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "대학/기타기관",
+        "title": "[한국경제인협회 채용] 정규직 경력 (연구-신산업)",
+        "deadline": "채용시마감",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790354?boardtype=L&menuid=232&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[근로복지공단 대구병원 채용] 계약직 신입 (물리치료사)",
+        "deadline": "2026.07.03",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790386?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[근로복지공단 태백병원 채용] 무기계약직 신입 (시설관리-기계)",
+        "deadline": "2026.07.03",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790384?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[에너지경제연구원 에너지국제기구협력실 채용] 계약직 신입 (국제협력)",
+        "deadline": "2026.07.10",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790382?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "[화순전남대학교병원 채용] 계약직 신입 (행정/접수수납/조제보조/주차관리/시설관리-기계,환경)",
+        "deadline": "2026.07.03",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790380?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
+        "category": "인턴/계약직",
+        "title": "⭐[한국산림기술인회 채용] 계약직 신입 (행정-대전근무)",
+        "deadline": "2026.06.30",
+        "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790374?boardtype=L&menuid=198&referrerAllArticles=false&page=1",
+        "state": "대기"
+    },
+    {
         "category": "대학/기타기관",
         "title": "[한국제약바이오협회 채용] 정규직 신입/경력 (보험약가/AI신약개발/GMP규제조화)",
         "deadline": "2026.07.05",
@@ -921,7 +1019,7 @@
         "title": "[금융감독원 채용] 정규직 신입 (고졸-상업,정보·전산)",
         "deadline": "2026.06.26",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2785379?boardtype=L&menuid=193&referrerAllArticles=false&page=13",
-        "state": "대기"
+        "state": "완료"
     },
     {
         "category": "중앙공기업",
@@ -1789,7 +1887,7 @@
         "title": "[대구가톨릭대학교 칠곡가톨릭병원 채용] 정규직 신입 교직원 (간호조무사)",
         "deadline": "2026.06.29",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2790126?boardtype=L&menuid=232&referrerAllArticles=false&page=2",
-        "state": "대기"
+        "state": "지원 예정"
     },
     {
         "category": "대학/기타기관",
@@ -2314,7 +2412,7 @@
         "title": "★총000명 [대구가톨릭대학교병원 채용] 정규직 신입 교직원 (간호사)",
         "deadline": "2026.06.26",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2787501?boardtype=L&menuid=232&referrerAllArticles=false&page=8",
-        "state": "대기"
+        "state": "완료"
     },
     {
         "category": "대학/기타기관",
@@ -3287,7 +3385,7 @@
         "title": "[근로복지공단 대구북부지사 채용] 체험형인턴 (업무지원)",
         "deadline": "2026.06.29",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2788574?boardtype=L&menuid=198&referrerAllArticles=false&page=6",
-        "state": "대기"
+        "state": "지원 예정"
     },
     {
         "category": "인턴/계약직",
@@ -4085,7 +4183,7 @@
         "title": "★총5명 [금융감독원 채용] 정규직 신입 (고졸-상업,정보전산)",
         "deadline": "2026.06.26",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2784346?boardtype=L&menuid=193&referrerAllArticles=false&page=1",
-        "state": "대기"
+        "state": "완료"
     },
     {
         "category": "중앙공기업",
@@ -4414,7 +4512,7 @@
         "title": "[충북과학기술혁신원 채용] 정규직 신입/경력 (ICT·디지털사업운영/콘텐츠사업운영-보훈)",
         "deadline": "6.1/6.8",
         "link": "https://cafe.naver.com/f-e/cafes/21737991/articles/2776431?boardtype=L&menuid=189&referrerAllArticles=false&page=1",
-        "state": "대기"
+        "state": "완료"
     },
     {
         "category": "지방공기업",
