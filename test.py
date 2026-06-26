@@ -35,4 +35,4 @@ def is_target_post(title):
 
     return False
 
-print(is_target_post("한국가스공 ict 정규직 신입"))
+print(is_target_post("한국가스공 ict 정규직 신입")) 
