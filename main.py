@@ -12,37 +12,10 @@ import uvicorn
 from src.gongjoonmo_crawler import run_crawler
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="./templates")
 
 # 데이터 파일 경로
 DATA_FILE = "data/job_posts.json"
-
-# def is_target_post(title):
-#     keywords_list = []
-
-#     keywords_list.append([
-#         '인턴', '신입'
-#     ])
-
-#     keywords_list.append([
-#         '대구', '한국가스공사', '신용보증기금', '한국교육학술정보원', '한국뇌연구원', '한국부동산원',
-#         '한국사학진흥재단', '한국산업기술기획평가원', '한국산업단지공단', '한국지능정보사회진흥원', '한국장학재단',
-
-#         '전산', 'ICT', 'IT', '디지털',
-#         '컴퓨터', '소프트웨어', 'SW', '네트워크', '데이터', '인공지능', 'AI', '머신러닝', '딥러닝',
-#         '프로그래밍', '백엔드', '프론트엔드', '풀스택', 
-#         '클라우드', '서버', 'DB', '데이터베이스', '플랫폼', '시스템',
-#     ])
-
-#     is_target = True
-
-#     title_lower = title.lower()
-#     for keywords in keywords_list:
-#         is_target = is_target and any(k.lower() in title_lower for k in keywords)
-#         if not is_target:
-#             break
-
-#     return is_target
 
 def is_target_post(title):
     title_lower = title.lower()
@@ -128,12 +101,16 @@ def home(request: Request):
     for p in undefined_posts:
         print(f"[!] 상태 미정 공고: {p['title']} (링크: {p['link']})")
     
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "unread_posts": unread_posts, 
-        "upcoming_posts": upcoming_posts,
-        "processed_posts": processed_posts
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html", 
+        context={
+            "request": request, 
+            "unread_posts": unread_posts, 
+            "upcoming_posts": upcoming_posts,
+            "processed_posts": processed_posts
+        }
+    )
 
 if __name__ == "__main__":
     with sync_playwright() as p:
