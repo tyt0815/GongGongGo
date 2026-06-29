@@ -124,7 +124,8 @@ if __name__ == "__main__":
         # 네트워크 연결 대기
         for _ in range(60):
             try:
-                page.goto('google.com')
+                page.goto('https://google.com')
+                print(f"[O] 네트워크 연결 성공!")
                 run_crawler(page, DATA_FILE)
                 break
             except Exception as e:
