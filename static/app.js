@@ -269,8 +269,8 @@
     try {
       await request("/api/crawl/start", { method: "POST" });
       const snapshot = await checkCrawlStatus();
-      if (snapshot.running) startPolling();
-      if (!snapshot.running) await refreshPosts();
+      if (snapshot?.running) startPolling();
+      if (!snapshot?.running) await refreshPosts();
     } catch (error) { showError(error.message); }
   }
 
@@ -392,7 +392,7 @@
     bindEvents();
     try {
       const snapshot = await checkCrawlStatus();
-      if (snapshot.running) startPolling();
+      if (snapshot?.running) startPolling();
       await refreshPosts();
     } catch (error) { showError(error.message); }
   }
