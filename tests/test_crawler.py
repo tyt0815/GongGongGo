@@ -113,33 +113,74 @@ class FakeContext:
 
 
 class FakeBrowser:
-    def __init__(self) -> None:
-        self.context = FakeContext()
+    def __init__(self, context: FakeContext | None = None) -> None:
+        self.context = context or FakeContext()
+        self.closed = False
 
     async def new_context(self) -> FakeContext:
         return self.context
 
     async def close(self) -> None:
-        return None
+        self.closed = True
 
 
 class FakeChromium:
+    def __init__(self, browser: FakeBrowser | None = None) -> None:
+        self.browser = browser or FakeBrowser()
+
     async def launch(self, *, headless: bool) -> FakeBrowser:
         assert headless is True
-        return FakeBrowser()
+        return self.browser
 
 
 class FakePlaywright:
-    def __init__(self) -> None:
-        self.chromium = FakeChromium()
+    def __init__(self, browser: FakeBrowser | None = None) -> None:
+        self.chromium = FakeChromium(browser)
 
 
 class FakePlaywrightManager:
+    def __init__(self, browser: FakeBrowser | None = None) -> None:
+        self.playwright = FakePlaywright(browser)
+
     async def __aenter__(self) -> FakePlaywright:
-        return FakePlaywright()
+        return self.playwright
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
+
+
+@pytest.mark.asyncio
+async def test_new_context_failure_closes_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.crawler as crawler
+
+    class ContextFailingBrowser(FakeBrowser):
+        async def new_context(self) -> FakeContext:
+            raise RuntimeError("context creation failed")
+
+    browser = ContextFailingBrowser()
+    monkeypatch.setattr(crawler, "async_playwright", lambda: FakePlaywrightManager(browser))
+
+    with pytest.raises(RuntimeError, match="context creation failed"):
+        await crawler.crawl_categories({}, 1, set(), set())
+
+    assert browser.closed is True
+
+
+@pytest.mark.asyncio
+async def test_context_close_failure_still_closes_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.crawler as crawler
+
+    class CloseFailingContext(FakeContext):
+        async def close(self) -> None:
+            raise RuntimeError("context close failed")
+
+    browser = FakeBrowser(CloseFailingContext())
+    monkeypatch.setattr(crawler, "async_playwright", lambda: FakePlaywrightManager(browser))
+
+    with pytest.raises(RuntimeError, match="context close failed"):
+        await crawler.crawl_categories({}, 1, set(), set())
+
+    assert browser.closed is True
 
 
 @pytest.mark.asyncio

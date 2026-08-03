@@ -101,9 +101,12 @@ async def crawl_categories(
     semaphore = asyncio.Semaphore(concurrency)
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context()
+        browser = None
+        context = None
         try:
+            browser = await playwright.chromium.launch(headless=True)
+            context = await browser.new_context()
+
             async def run_one(category: str, url: str) -> CategoryResult:
                 async with semaphore:
                     page = None
@@ -134,5 +137,9 @@ async def crawl_categories(
             result_by_category = {result.category: result for result in completed}
             return tuple(result_by_category[category] for category in categories)
         finally:
-            await context.close()
-            await browser.close()
+            try:
+                if context is not None:
+                    await context.close()
+            finally:
+                if browser is not None:
+                    await browser.close()
