@@ -10,7 +10,7 @@ from src.logging_config import cleanup_old_logs, configure_logging
 @pytest.fixture(autouse=True)
 def close_application_log_handlers():
     yield
-    logger = logging.getLogger("gonggonggo")
+    logger = logging.getLogger("src")
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
         handler.close()
@@ -51,3 +51,15 @@ def test_configure_logging_does_not_duplicate_handlers_when_called_twice(tmp_pat
 
     assert first is second
     assert len(second.handlers) == 2
+
+
+def test_configure_logging_captures_production_module_logs(tmp_path: Path):
+    logger = configure_logging(tmp_path, today=date(2026, 8, 3))
+
+    logging.getLogger("src.crawler").error("크롤러 오류")
+
+    for handler in logger.handlers:
+        handler.flush()
+    assert "크롤러 오류" in (tmp_path / "gonggonggo-2026-08-03.log").read_text(
+        encoding="utf-8"
+    )

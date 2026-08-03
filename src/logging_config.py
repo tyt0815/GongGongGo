@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 _LOG_FILENAME = re.compile(r"gonggonggo-(\d{4}-\d{2}-\d{2})\.log\Z")
-_LOGGER_NAME = "gonggonggo"
+_LOGGER_NAME = "src"
 
 
 def cleanup_old_logs(
