@@ -6,10 +6,14 @@ from pathlib import Path
 
 from src.config import DEFAULT_INSTITUTION_KEYWORDS, DEFAULT_ROLE_KEYWORDS
 from src.domain import DeadlineKind, PostStatus
-from src.parsing import parse_deadline, parse_title
+from src.parsing import extract_institution, parse_deadline, parse_title
 
 
 _MIGRATION_KEY = "json_migration_v1"
+_DEFAULT_KEYWORD_SEED_KEYS = {
+    "institution": "default_keywords_seeded_institution_v1",
+    "role": "default_keywords_seeded_role_v1",
+}
 _STRICT_DATE = re.compile(r"\d{4}\.\d{2}\.\d{2}\Z")
 _LEGACY_STATUS_MAP = {
     "대기": PostStatus.REVIEW_PENDING.value,
@@ -30,6 +34,9 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 def initialize_database(db_path: Path, json_path: Path) -> None:
     with connect(db_path) as connection:
+        keyword_table_existed = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'filter_keywords'"
+        ).fetchone() is not None
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS app_meta (
@@ -106,28 +113,33 @@ def initialize_database(db_path: Path, json_path: Path) -> None:
             VALUES (1, 2, 0) ON CONFLICT(id) DO NOTHING
             """
         )
-        _insert_default_keywords(connection)
+        _seed_default_keywords_once(connection, keyword_table_existed)
 
     _migrate_json_once(db_path, json_path)
 
 
-def _insert_default_keywords(connection: sqlite3.Connection) -> None:
-    connection.executemany(
-        """
-        INSERT INTO filter_keywords(kind, keyword)
-        VALUES ('institution', ?)
-        ON CONFLICT(kind, keyword) DO NOTHING
-        """,
-        ((keyword,) for keyword in DEFAULT_INSTITUTION_KEYWORDS),
-    )
-    connection.executemany(
-        """
-        INSERT INTO filter_keywords(kind, keyword)
-        VALUES ('role', ?)
-        ON CONFLICT(kind, keyword) DO NOTHING
-        """,
-        ((keyword,) for keyword in DEFAULT_ROLE_KEYWORDS),
-    )
+def _seed_default_keywords_once(
+    connection: sqlite3.Connection, keyword_table_existed: bool
+) -> None:
+    defaults = {
+        "institution": DEFAULT_INSTITUTION_KEYWORDS,
+        "role": DEFAULT_ROLE_KEYWORDS,
+    }
+    for kind, keywords in defaults.items():
+        metadata_key = _DEFAULT_KEYWORD_SEED_KEYS[kind]
+        if connection.execute(
+            "SELECT 1 FROM app_meta WHERE key = ?", (metadata_key,)
+        ).fetchone():
+            continue
+        if not keyword_table_existed:
+            connection.executemany(
+                "INSERT INTO filter_keywords(kind, keyword) VALUES (?, ?)",
+                ((kind, keyword) for keyword in keywords),
+            )
+        connection.execute(
+            "INSERT INTO app_meta(key, value) VALUES (?, 'complete')",
+            (metadata_key,),
+        )
 
 
 def _migrate_json_once(db_path: Path, json_path: Path) -> None:
@@ -187,7 +199,9 @@ def _migration_values(legacy_post: object, now: str) -> tuple[object, ...] | Non
         return None
 
     parsed_title = parse_title(title)
-    institution = parsed_title.institution if parsed_title else ""
+    institution = (
+        parsed_title.institution if parsed_title else extract_institution(title)
+    )
     employment = parsed_title.employment if parsed_title else ""
     career = parsed_title.career if parsed_title else ""
     roles = parsed_title.roles if parsed_title else ()

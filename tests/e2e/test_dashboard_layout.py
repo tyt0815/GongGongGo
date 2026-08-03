@@ -6,6 +6,7 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -49,10 +50,49 @@ class BlockedFakeManager:
         return None
 
 
+class RetryFakeManager:
+    """No-network manager that completes one accepted slash-category retry."""
+
+    def __init__(self) -> None:
+        self.running = False
+        self.retry_status_reads = 0
+        self.category_errors = {"인턴/계약직": "timeout"}
+        self.starts: list[tuple[str, tuple[str, ...] | None]] = []
+
+    def start(self, trigger: str, categories: tuple[str, ...] | None = None) -> bool:
+        self.starts.append((trigger, categories))
+        if trigger == "startup":
+            return True
+        if self.running:
+            return False
+        self.running = True
+        self.retry_status_reads = 0
+        return True
+
+    def snapshot(self) -> CrawlSnapshot:
+        if self.running:
+            self.retry_status_reads += 1
+            if self.retry_status_reads == 1:
+                return CrawlSnapshot(running=True, total_categories=1)
+            self.running = False
+            self.category_errors = {}
+            return CrawlSnapshot(completed_categories=1, total_categories=1)
+        return CrawlSnapshot(category_errors=self.category_errors)
+
+    async def wait(self) -> None:
+        return None
+
+
 class LiveServer:
-    def __init__(self, db_path: Path, json_path: Path) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        json_path: Path,
+        manager_factory: Callable[[], object] | None = None,
+    ) -> None:
         self.db_path = db_path
         self.json_path = json_path
+        self.manager_factory = manager_factory or BlockedFakeManager
         self.base_url = ""
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -62,7 +102,7 @@ class LiveServer:
         app = create_app(
             db_path=self.db_path,
             json_path=self.json_path,
-            manager_factory=lambda _repository: BlockedFakeManager(),
+            manager_factory=lambda _repository: self.manager_factory(),
         )
 
         @app.middleware("http")
@@ -212,6 +252,127 @@ def test_status_transition_and_exclusion_undo_during_blocked_crawl(
         planned_lane.get_by_role("link", name="일반연구원", exact=True)
     ).to_be_visible()
     expect(page.locator("#crawl-status")).to_contain_text("수집 중: 1/4")
+
+
+def test_run_level_failure_is_visible(
+    page: Page, live_server: LiveServer
+) -> None:
+    """Catches a repository failure being rendered as a clean crawl completion."""
+    page.route(
+        "**/api/crawl/status",
+        lambda route: route.fulfill(
+            json={
+                "running": False,
+                "completed_categories": 1,
+                "total_categories": 1,
+                "new_count": 0,
+                "category_errors": {},
+                "run_error": "실행 이력 저장 실패",
+            }
+        ),
+    )
+
+    page.goto(live_server.base_url)
+
+    expect(page.locator("#crawl-errors")).to_contain_text(
+        "실행 오류: 실행 이력 저장 실패"
+    )
+
+
+def test_failed_slash_category_retry_uses_polling_lifecycle(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Catches a missing retry control or an unescaped slash category request."""
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    manager = RetryFakeManager()
+    server = LiveServer(
+        tmp_path / "gonggonggo.db", json_path, manager_factory=lambda: manager
+    )
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    try:
+        server.start()
+        page.goto(server.base_url)
+        retry = page.get_by_role("button", name="인턴/계약직 다시 시도", exact=True)
+        expect(retry).to_be_visible()
+
+        retry.click()
+
+        expect(page.locator("#crawl-status")).to_contain_text("수집 중: 0/1")
+        expect(page.locator("#crawl-button")).to_be_enabled(timeout=3000)
+        expect(page.locator("#crawl-status")).to_contain_text("최근 수집: 1/1")
+        assert ("retry", ("인턴/계약직",)) in manager.starts
+    finally:
+        page.close()
+        server.stop()
+
+
+def test_fast_terminal_manual_crawl_reenables_button_and_refreshes_once(
+    page: Page, live_server: LiveServer
+) -> None:
+    """Catches a fast completed crawl leaving the button disabled or unrefreshed."""
+    requests = {"status": 0, "posts": 0, "start": 0}
+
+    def fulfill_status(route) -> None:
+        requests["status"] += 1
+        if requests["status"] == 1:
+            snapshot = {
+                "running": False,
+                "completed_categories": 0,
+                "total_categories": 0,
+                "new_count": 0,
+                "category_errors": {},
+                "run_error": None,
+            }
+        else:
+            snapshot = {
+                "running": False,
+                "completed_categories": 4,
+                "total_categories": 4,
+                "new_count": 1,
+                "category_errors": {},
+                "run_error": None,
+            }
+        route.fulfill(json=snapshot)
+
+    def fulfill_posts(route) -> None:
+        requests["posts"] += 1
+        posts = []
+        if requests["posts"] == 2:
+            posts = [
+                {
+                    "link": "https://example.test/fast-result",
+                    "category": "중앙공기업",
+                    "original_title": "[완료기관 채용] 정규직 신입 (전산)",
+                    "institution": "완료기관",
+                    "employment": "정규직",
+                    "career": "신입",
+                    "display_roles": ["전산"],
+                    "deadline_raw": "2026.08.10",
+                    "deadline_date": "2026-08-10",
+                    "deadline_kind": "dated",
+                    "status": "review_pending",
+                    "last_seen_at": "2026-08-03T00:00:00+00:00",
+                }
+            ]
+        route.fulfill(json={"posts": posts})
+
+    def fulfill_start(route) -> None:
+        requests["start"] += 1
+        route.fulfill(json={"started": True})
+
+    page.route("**/api/crawl/status", fulfill_status)
+    page.route("**/api/posts", fulfill_posts)
+    page.route("**/api/crawl/start", fulfill_start)
+    page.goto(live_server.base_url)
+    expect(page.locator("#crawl-status")).to_contain_text("아직 수집 결과가 없습니다")
+
+    page.locator("#crawl-button").click()
+
+    expect(page.locator("#crawl-status")).to_contain_text("최근 수집: 4/4")
+    expect(page.locator("#crawl-button")).to_be_enabled()
+    expect(page.get_by_role("link", name="완료기관", exact=True)).to_be_visible()
+    assert requests == {"status": 2, "posts": 2, "start": 1}
 
 
 def test_keyword_changes_apply_immediately_and_persist_after_restart(

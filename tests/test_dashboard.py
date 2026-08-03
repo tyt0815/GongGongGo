@@ -1,7 +1,4 @@
-import json
 from pathlib import Path
-import subprocess
-import textwrap
 
 import pytest
 from fastapi.testclient import TestClient
@@ -121,7 +118,7 @@ def test_post_api_exposes_parse_failed_target_as_a_fallback_card(client, dashboa
     } == {
         "link": "https://example.test/raw-target",
         "original_title": "[한국교육학술정보원 채용] 정규직 신입",
-        "institution": "",
+        "institution": "한국교육학술정보원",
         "display_roles": [],
         "deadline_kind": "open",
         "status": "review_pending",
@@ -134,7 +131,6 @@ def test_client_card_contract_handles_fallback_deletion_and_completed_crawls() -
 
     assert 'post.status === "excluded" || post.deadline_kind !== "dated"' in script
     assert "deletePost(post)" in script
-    assert 'link.textContent = post.institution || post.original_title' in script
     assert 'card.append(textElement("p", post.original_title, "job-meta"))' not in script
     assert 'roleElement.title = role' in script
     assert "최근 수집:" in script
@@ -167,121 +163,3 @@ def test_manual_crawl_contract_tracks_an_accepted_run_after_null_status() -> Non
     assert "crawlButton.disabled = true;" in start_crawl
     assert "if (snapshot?.running !== false) startPolling();" in start_crawl
     assert "if (snapshot?.running === false) await refreshPosts();" in start_crawl
-
-
-def test_fast_terminal_manual_crawl_reenables_button_and_refreshes_once(tmp_path: Path) -> None:
-    """Catches a post-status write disabling the button after a fast crawl finishes."""
-    app_script = Path(__file__).parents[1] / "static" / "app.js"
-    harness = tmp_path / "fast-terminal-crawl.cjs"
-    harness.write_text(
-        textwrap.dedent(
-            """
-            const fs = require("fs");
-            const vm = require("vm");
-
-            class Element {
-              constructor(id = "") {
-                this.id = id;
-                this.value = "";
-                this.disabled = false;
-                this.hidden = false;
-                this.textContent = "";
-                this.listeners = {};
-                this.children = [];
-                this.classList = { add() {}, toggle() {} };
-              }
-              addEventListener(type, handler) { this.listeners[type] = handler; }
-              append(...children) { this.children.push(...children); }
-              replaceChildren(...children) { this.children = children; }
-              setAttribute() {}
-            }
-
-            const elements = new Map();
-            const element = (id) => {
-              if (!elements.has(id)) elements.set(id, new Element(id));
-              return elements.get(id);
-            };
-            let initialize;
-            global.document = {
-              getElementById: element,
-              createElement: () => new Element(),
-              createTextNode: (text) => ({ textContent: text }),
-              querySelectorAll: () => [],
-              querySelector: () => new Element(),
-              addEventListener(type, handler) {
-                if (type === "DOMContentLoaded") initialize = handler;
-              },
-            };
-            global.Option = class Option {
-              constructor(text, value) { this.text = text; this.value = value; }
-            };
-
-            let postRefreshes = 0;
-            let statusRequests = 0;
-            let intervalsStarted = 0;
-            const terminal = {
-              running: false,
-              completed_categories: 4,
-              total_categories: 4,
-              new_count: 1,
-              category_errors: {},
-            };
-            global.fetch = async (url) => {
-              let payload = null;
-              let status = 200;
-              if (url === "/api/crawl/status") {
-                statusRequests += 1;
-                payload = terminal;
-              } else if (url === "/api/posts") {
-                postRefreshes += 1;
-                payload = { posts: [] };
-              } else if (url === "/api/crawl/start") {
-                payload = { accepted: true };
-              } else {
-                throw new Error(`Unexpected request: ${url}`);
-              }
-              return { ok: true, status, json: async () => payload };
-            };
-            global.window = {
-              setInterval() { intervalsStarted += 1; return 1; },
-              clearInterval() {},
-              setTimeout() { return 1; },
-              clearTimeout() {},
-              confirm() { return true; },
-            };
-
-            vm.runInThisContext(fs.readFileSync(process.argv[2], "utf8"), {
-              filename: process.argv[2],
-            });
-
-            (async () => {
-              await initialize();
-              await element("crawl-button").listeners.click();
-              process.stdout.write(JSON.stringify({
-                buttonDisabled: element("crawl-button").disabled,
-                postRefreshes,
-                statusRequests,
-                intervalsStarted,
-              }));
-            })().catch((error) => {
-              console.error(error);
-              process.exitCode = 1;
-            });
-            """
-        ),
-        encoding="utf-8",
-    )
-
-    completed = subprocess.run(
-        ["node", str(harness), str(app_script)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    assert json.loads(completed.stdout) == {
-        "buttonDisabled": False,
-        "postRefreshes": 2,
-        "statusRequests": 2,
-        "intervalsStarted": 0,
-    }

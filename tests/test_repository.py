@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -118,15 +119,42 @@ def test_unblocking_link_allows_a_future_crawler_insert(repository, seeded_post)
     assert repository.get_post(seeded_post.link) is not None
 
 
-def test_keyword_replacement_normalizes_and_rejects_empty_lists(repository):
+def test_keyword_replacement_normalizes_and_allows_an_intentional_empty_list(repository):
     repository.replace_keywords("institution", [" Target ", "target", "Other"])
 
     assert repository.get_keywords("institution") == ("Target", "Other")
 
-    with pytest.raises(ValueError, match="(?i)at least one"):
-        repository.replace_keywords("institution", [" ", ""])
+    repository.replace_keywords("institution", [" ", ""])
 
-    assert repository.get_keywords("institution") == ("Target", "Other")
+    assert repository.get_keywords("institution") == ()
+
+
+def test_preference_update_rolls_back_all_values_on_mid_save_failure(repository):
+    repository.update_settings(Settings(concurrency=1, open_browser=False))
+    repository.replace_keywords("institution", ["Old Institution"])
+    repository.replace_keywords("role", ["Old Role"])
+    with connect(repository.db_path) as connection, connection:
+        connection.execute(
+            """
+            CREATE TRIGGER fail_role_keyword_insert
+            BEFORE INSERT ON filter_keywords
+            WHEN NEW.kind = 'role'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced role failure');
+            END
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced role failure"):
+        repository.update_preferences(
+            Settings(concurrency=4, open_browser=True),
+            [" New Institution ", "new institution"],
+            ["New Role"],
+        )
+
+    assert repository.get_settings() == Settings(concurrency=1, open_browser=False)
+    assert repository.get_keywords("institution") == ("Old Institution",)
+    assert repository.get_keywords("role") == ("Old Role",)
 
 
 def test_settings_persist(repository):
@@ -172,7 +200,7 @@ def test_visible_posts_apply_target_and_role_filters(repository):
 
 
 def test_parse_failed_target_title_is_visible_as_a_raw_title_fallback(repository):
-    """Catches a parser failure hiding a configured target institution's post."""
+    """Catches loss of a bracketed institution when role parsing fails."""
     repository.replace_keywords("institution", ["한국교육학술정보원"])
     repository.replace_keywords("role", ["전산"])
     repository.upsert_crawled_posts(
@@ -195,8 +223,32 @@ def test_parse_failed_target_title_is_visible_as_a_raw_title_fallback(repository
     visible = repository.list_visible_posts()
 
     assert [(row["link"], row["institution"], row["display_roles"]) for row in visible] == [
-        ("https://example.test/raw-target", "", ()),
+        ("https://example.test/raw-target", "한국교육학술정보원", ()),
     ]
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "한국교육학술정보원 특별 공고",
+        "[한국교육학술정보원 채용 정규직 신입",
+    ],
+)
+def test_unstructured_raw_title_cannot_match_institution_keyword(repository, title):
+    repository.replace_keywords("institution", ["한국교육학술정보원"])
+    repository.replace_keywords("role", ["전산"])
+    repository.upsert_crawled_posts(
+        [
+            CrawledPost(
+                category="central",
+                title=title,
+                deadline_raw="2026.08.10",
+                link="https://example.test/not-bracketed",
+            )
+        ]
+    )
+
+    assert repository.list_visible_posts() == []
 
 
 def test_explicitly_empty_status_filter_returns_no_posts(repository, seeded_post):

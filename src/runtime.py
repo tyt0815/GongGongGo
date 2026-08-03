@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 import urllib.request
@@ -15,6 +16,7 @@ from .repository import Repository
 _APP_URL = "http://127.0.0.1:8000"
 _HEALTH_URL = f"{_APP_URL}/health"
 _HEALTH_RETRY_SECONDS = 0.1
+logger = logging.getLogger(__name__)
 
 
 def default_health_check(url: str) -> bool:
@@ -43,12 +45,18 @@ def open_browser_when_healthy(
 
 def run(app: FastAPI) -> None:
     configure_logging(LOG_DIR)
-    initialize_database(DB_PATH, JSON_PATH)
-    settings = Repository(DB_PATH).get_settings()
-    if settings.open_browser:
-        threading.Thread(
-            target=open_browser_when_healthy,
-            args=(_APP_URL, _HEALTH_URL),
-            daemon=True,
-        ).start()
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    try:
+        initialize_database(DB_PATH, JSON_PATH)
+        settings = Repository(DB_PATH).get_settings()
+        if settings.open_browser:
+            threading.Thread(
+                target=open_browser_when_healthy,
+                args=(_APP_URL, _HEALTH_URL),
+                daemon=True,
+            ).start()
+        uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+    except KeyboardInterrupt:
+        raise
+    except BaseException:
+        logger.exception("Server startup failed")
+        raise

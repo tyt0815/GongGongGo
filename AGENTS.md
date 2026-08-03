@@ -8,7 +8,7 @@
 2. `docs/superpowers/specs/2026-08-03-gonggonggo-modernization-design.md`
 3. `docs/HANDOFF.md`
 
-승인된 설계는 아직 구현되지 않았다. 현재 코드의 동작과 목표 구조를 혼동하지 않는다.
+승인된 설계는 구현되었다. 현재 코드의 동작과 승인된 목표 구조를 함께 유지한다.
 
 ## 핵심 제약
 

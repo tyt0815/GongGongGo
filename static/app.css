@@ -16,7 +16,9 @@ h3 { margin: 0; font-size: 1rem; }
 .primary-button { background: #4338ca; color: #fff; border-color: #4338ca; font-weight: 700; }
 .primary-button:disabled { cursor: wait; opacity: .6; }
 .crawl-region { display: flex; gap: 12px; margin: 20px 0; padding: 12px 14px; border-radius: 10px; background: #e9edff; color: #25327b; }
-#crawl-errors { color: #b42318; }
+#crawl-errors { display: flex; flex-wrap: wrap; gap: 8px; color: #b42318; }
+.crawl-error-item { display: inline-flex; align-items: center; gap: 6px; }
+.crawl-error-item button { border: 1px solid #b42318; border-radius: 7px; padding: 3px 7px; background: #fff; color: #b42318; }
 .toolbar { gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .toolbar label, .settings-drawer label { display: grid; gap: 5px; font-size: .9rem; color: #475569; }
 .toolbar input, .toolbar select, .settings-drawer input[type="text"] { min-height: 36px; border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 8px; background: #fff; }

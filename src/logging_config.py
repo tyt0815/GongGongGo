@@ -6,6 +6,8 @@ from pathlib import Path
 
 _LOG_FILENAME = re.compile(r"gonggonggo-(\d{4}-\d{2}-\d{2})\.log\Z")
 _LOGGER_NAME = "src"
+_FORWARDED_LOGGERS = (_LOGGER_NAME, "uvicorn", "uvicorn.error", "uvicorn.access")
+_HANDLER_MARKER = "_gonggonggo_handler"
 
 
 def cleanup_old_logs(
@@ -34,11 +36,12 @@ def configure_logging(log_dir: Path, today: date | None = None) -> logging.Logge
     current_day = today or date.today()
     cleanup_old_logs(log_dir, today=current_day)
 
-    logger = logging.getLogger(_LOGGER_NAME)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    for handler in root_logger.handlers[:]:
+        if not getattr(handler, _HANDLER_MARKER, False):
+            continue
+        root_logger.removeHandler(handler)
         handler.close()
 
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -48,5 +51,15 @@ def configure_logging(log_dir: Path, today: date | None = None) -> logging.Logge
     console_handler = logging.StreamHandler()
     for handler in (file_handler, console_handler):
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
+        setattr(handler, _HANDLER_MARKER, True)
+        root_logger.addHandler(handler)
+
+    for logger_name in _FORWARDED_LOGGERS:
+        logger = logging.getLogger(logger_name)
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
+        logger.setLevel(logging.NOTSET)
+        logger.propagate = True
+        logger.disabled = False
+    return logging.getLogger(_LOGGER_NAME)

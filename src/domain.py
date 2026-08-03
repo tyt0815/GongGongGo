@@ -89,3 +89,4 @@ class CrawlSnapshot:
     total_categories: int = 0
     new_count: int = 0
     category_errors: dict[str, str] = field(default_factory=dict)
+    run_error: str | None = None

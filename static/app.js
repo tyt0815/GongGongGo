@@ -82,7 +82,9 @@
     link.href = post.link;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = post.institution || post.original_title;
+    link.textContent = post.display_roles?.length
+      ? (post.institution || post.original_title)
+      : post.original_title;
     title.append(link);
     card.append(title);
 
@@ -240,7 +242,20 @@
         : "아직 수집 결과가 없습니다.";
     }
     crawlButton.disabled = snapshot.running;
-    crawlErrors.textContent = Object.entries(snapshot.category_errors || {}).map(([category, error]) => `${category}: ${error}`).join(" · ");
+    clearNode(crawlErrors);
+    if (snapshot.run_error) {
+      crawlErrors.append(textElement("span", `실행 오류: ${snapshot.run_error}`));
+    }
+    Object.entries(snapshot.category_errors || {}).forEach(([category, error]) => {
+      const item = textElement("span", `${category}: ${error}`, "crawl-error-item");
+      const retry = textElement("button", "다시 시도");
+      retry.type = "button";
+      retry.setAttribute("aria-label", `${category} 다시 시도`);
+      retry.disabled = snapshot.running;
+      retry.addEventListener("click", () => retryCategory(category));
+      item.append(retry);
+      crawlErrors.append(item);
+    });
   }
 
   function stopPolling() {
@@ -268,6 +283,16 @@
   async function startCrawl() {
     try {
       await request("/api/crawl/start", { method: "POST" });
+      crawlButton.disabled = true;
+      const snapshot = await checkCrawlStatus();
+      if (snapshot?.running !== false) startPolling();
+      if (snapshot?.running === false) await refreshPosts();
+    } catch (error) { showError(error.message); }
+  }
+
+  async function retryCategory(category) {
+    try {
+      await request(`/api/crawl/retry/${encodeURIComponent(category)}`, { method: "POST" });
       crawlButton.disabled = true;
       const snapshot = await checkCrawlStatus();
       if (snapshot?.running !== false) startPolling();

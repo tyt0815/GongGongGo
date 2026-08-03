@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+import src.parsing as parsing
 from src.domain import DeadlineKind
 from src.parsing import filter_roles, parse_deadline, parse_title
 
@@ -33,6 +34,14 @@ def test_parse_deadline_classifies_date_open_and_unknown():
     assert parse_deadline("8/5", date(2026, 8, 3)).value == date(2026, 8, 5)
     assert parse_deadline("채용시마감", date(2026, 8, 3)).kind is DeadlineKind.OPEN
     assert parse_deadline("7.24/7.31", date(2026, 8, 3)).kind is DeadlineKind.UNKNOWN
+
+
+def test_parse_deadline_accepts_one_leading_tilde_and_preserves_raw_text():
+    parsed = parse_deadline("~8.10", date(2026, 8, 3))
+
+    assert parsed.raw == "~8.10"
+    assert parsed.kind is DeadlineKind.DATED
+    assert parsed.value == date(2026, 8, 10)
 
 
 @pytest.mark.parametrize(
@@ -77,3 +86,16 @@ def test_parse_title_preserves_original_text_without_mutating_it():
     assert title == "★총20명 [한국가스공사 채용] 정규직 신입 (기계, 전산)"
     assert parsed is not None
     assert parsed.roles == ("기계", "전산")
+
+
+@pytest.mark.parametrize(
+    ("title", "institution"),
+    [
+        ("[한국교육학술정보원 채용] 정규직 신입", "한국교육학술정보원"),
+        ("★총20명 [한국가스공사 채용] 형식이 다른 공고", "한국가스공사"),
+        ("한국교육학술정보원 특별 공고", ""),
+        ("[한국교육학술정보원 채용 정규직 신입", ""),
+    ],
+)
+def test_extract_institution_requires_a_complete_bracketed_field(title, institution):
+    assert parsing.extract_institution(title) == institution

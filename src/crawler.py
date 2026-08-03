@@ -128,11 +128,17 @@ async def crawl_categories(
                 for category, url in categories.items()
             ]
             completed: list[CategoryResult] = []
-            for task in asyncio.as_completed(tasks):
-                result = await task
-                completed.append(result)
-                if on_result is not None:
-                    await on_result(result)
+            try:
+                for task in asyncio.as_completed(tasks):
+                    result = await task
+                    completed.append(result)
+                    if on_result is not None:
+                        await on_result(result)
+            finally:
+                unfinished = [task for task in tasks if not task.done()]
+                for task in unfinished:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
             result_by_category = {result.category: result for result in completed}
             return tuple(result_by_category[category] for category in categories)

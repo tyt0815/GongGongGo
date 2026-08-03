@@ -1,5 +1,6 @@
 import asyncio
 import re
+from pathlib import Path
 
 import pytest
 
@@ -64,6 +65,35 @@ async def test_category_collects_rows_and_stops_at_known_link(fake_page: FakePag
     assert [post.link for post in result.posts] == ["https://example/new"]
     assert result.posts[0].title == "[A 채용] 정규직 신입 (전산)"
     assert result.posts[0].deadline_raw == "~8.10"
+
+
+@pytest.mark.asyncio
+async def test_tilde_deadline_from_crawler_is_stored_as_dated(
+    fake_page: FakePage, tmp_path: Path
+) -> None:
+    from src.crawler import crawl_category
+    from src.database import connect, initialize_database
+    from src.repository import Repository
+
+    fake_page.add_page(
+        1,
+        [("[A 채용] 정규직 신입 (전산) (~8.10)", "https://example/new")],
+    )
+    result = await crawl_category(
+        fake_page, "중앙공기업", "https://example/menu", set(), set()
+    )
+    db_path = tmp_path / "gonggonggo.db"
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    initialize_database(db_path, json_path)
+
+    Repository(db_path).upsert_crawled_posts(list(result.posts))
+
+    with connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT deadline_raw, deadline_kind, deadline_date FROM job_posts"
+        ).fetchone()
+    assert tuple(row) == ("~8.10", "dated", "2026-08-10")
 
 
 @pytest.mark.asyncio
@@ -242,3 +272,68 @@ async def test_category_error_does_not_cancel_peers_and_results_are_in_input_ord
     assert results[1].error == "category failed"
     assert [result.category for result in results if result.posts] == ["slow", "fast"]
     assert completed == ["broken", "fast", "slow"]
+
+
+@pytest.mark.asyncio
+async def test_callback_failure_cancels_and_gathers_peers_before_context_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.crawler as crawler
+
+    peer_started = asyncio.Event()
+    peer_finished = asyncio.Event()
+    worker_tasks: list[asyncio.Task[object]] = []
+
+    class TrackingContext(FakeContext):
+        def __init__(self) -> None:
+            self.peer_finished_when_closed = False
+
+        async def close(self) -> None:
+            self.peer_finished_when_closed = peer_finished.is_set()
+
+    context = TrackingContext()
+    browser = FakeBrowser(context)
+
+    async def worker(
+        page: FakeBrowserPage,
+        category: str,
+        base_url: str,
+        known_links: set[str],
+        blocked_links: set[str],
+    ) -> CategoryResult:
+        worker_tasks.append(asyncio.current_task())
+        if category == "fast":
+            await peer_started.wait()
+            return CategoryResult(category="fast")
+        peer_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            peer_finished.set()
+
+    async def failing_callback(result: CategoryResult) -> None:
+        raise RuntimeError("progress callback failed")
+
+    monkeypatch.setattr(
+        crawler, "async_playwright", lambda: FakePlaywrightManager(browser)
+    )
+    monkeypatch.setattr(crawler, "crawl_category", worker)
+
+    try:
+        with pytest.raises(RuntimeError, match="progress callback failed"):
+            await crawler.crawl_categories(
+                {"slow": "https://example/slow", "fast": "https://example/fast"},
+                2,
+                set(),
+                set(),
+                on_result=failing_callback,
+            )
+
+        assert peer_finished.is_set()
+        assert all(task.done() for task in worker_tasks)
+        assert context.peer_finished_when_closed is True
+    finally:
+        unfinished = [task for task in worker_tasks if not task.done()]
+        for task in unfinished:
+            task.cancel()
+        await asyncio.gather(*unfinished, return_exceptions=True)

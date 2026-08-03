@@ -8,6 +8,7 @@ _TITLE_PATTERN = re.compile(
     r"^(?:.*?\s+)?\[(?P<institution>[^\]]+)\]\s*"
     r"(?P<details>.*?)\s*\((?P<roles>[^()]*)\)\s*$"
 )
+_BRACKETED_INSTITUTION_PATTERN = re.compile(r"^[^[]*\[(?P<institution>[^\]]+)\]")
 _CAREER_PATTERN = re.compile(r"\b(신입/경력|신입|경력)\b")
 _OPEN_DEADLINES = {
     "채용시마감",
@@ -23,7 +24,7 @@ def parse_title(title: str) -> ParsedTitle | None:
     if match is None:
         return None
 
-    institution = re.sub(r"\s*채용\s*$", "", match.group("institution")).strip()
+    institution = _clean_institution(match.group("institution"))
     roles = tuple(
         role.strip()
         for role in re.split(r"[/,]", match.group("roles"))
@@ -44,12 +45,23 @@ def parse_title(title: str) -> ParsedTitle | None:
     )
 
 
+def extract_institution(title: str) -> str:
+    match = _BRACKETED_INSTITUTION_PATTERN.match(title)
+    if match is None:
+        return ""
+    return _clean_institution(match.group("institution"))
+
+
+def _clean_institution(value: str) -> str:
+    return re.sub(r"\s*채용\s*$", "", value).strip()
+
+
 def parse_deadline(raw: str, today: date) -> ParsedDeadline:
     compact = re.sub(r"\s+", "", raw)
     if compact in _OPEN_DEADLINES:
         return ParsedDeadline(raw=raw, kind=DeadlineKind.OPEN, value=None)
 
-    dated = _parse_dated_deadline(compact, today)
+    dated = _parse_dated_deadline(compact.removeprefix("~"), today)
     if dated is not None:
         return ParsedDeadline(raw=raw, kind=DeadlineKind.DATED, value=dated)
     return ParsedDeadline(raw=raw, kind=DeadlineKind.UNKNOWN, value=None)

@@ -145,6 +145,54 @@ def test_initialize_database_creates_schema_defaults_and_idempotent_migration(
     assert busy_timeout >= 5000
 
 
+def test_user_removed_keyword_lists_remain_empty_after_restart(tmp_path: Path):
+    db_path = tmp_path / "gonggonggo.db"
+    source = tmp_path / "job_posts.json"
+    source.write_text("[]", encoding="utf-8")
+    initialize_database(db_path, source)
+    with connect(db_path) as connection, connection:
+        connection.execute("DELETE FROM filter_keywords")
+
+    initialize_database(db_path, source)
+
+    with connect(db_path) as connection:
+        keywords = connection.execute(
+            "SELECT kind, keyword FROM filter_keywords"
+        ).fetchall()
+    assert keywords == []
+
+
+def test_existing_database_without_seed_metadata_preserves_empty_kind_on_upgrade(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "gonggonggo.db"
+    source = tmp_path / "job_posts.json"
+    source.write_text("[]", encoding="utf-8")
+    initialize_database(db_path, source)
+    with connect(db_path) as connection, connection:
+        connection.execute(
+            "DELETE FROM filter_keywords WHERE kind = 'institution'"
+        )
+        connection.execute(
+            "DELETE FROM app_meta WHERE key LIKE 'default_keywords_seeded_%'"
+        )
+
+    initialize_database(db_path, source)
+
+    with connect(db_path) as connection:
+        institution_count = connection.execute(
+            "SELECT COUNT(*) FROM filter_keywords WHERE kind = 'institution'"
+        ).fetchone()[0]
+        role_keywords = tuple(
+            row["keyword"]
+            for row in connection.execute(
+                "SELECT keyword FROM filter_keywords WHERE kind = 'role' ORDER BY id"
+            )
+        )
+    assert institution_count == 0
+    assert role_keywords == DEFAULT_ROLE_KEYWORDS
+
+
 def test_schema_enforces_status_deadline_concurrency_and_keyword_constraints(tmp_path: Path):
     db_path = tmp_path / "gonggonggo.db"
     source = tmp_path / "empty.json"

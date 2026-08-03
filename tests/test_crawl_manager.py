@@ -283,5 +283,58 @@ async def test_history_creation_failure_does_not_leave_manager_active(
     assert manager.start("manual") is True
     await manager.wait()
     assert manager.snapshot().running is False
+    assert manager.snapshot().run_error == "database unavailable"
     assert manager.start("manual") is True
     await manager.wait()
+
+
+@pytest.mark.asyncio
+async def test_upsert_failure_after_successful_categories_exposes_run_error(
+    manager,
+    repository: Repository,
+    fake_crawler: FakeCrawler,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_crawler.results = (
+        CategoryResult("central", posts=(make_post("https://example.test/a"),)),
+    )
+
+    def fail_upsert(posts: list[CrawledPost]) -> int:
+        raise RuntimeError("post save failed")
+
+    monkeypatch.setattr(repository, "upsert_crawled_posts", fail_upsert)
+
+    assert manager.start("manual", ("central",)) is True
+    await manager.wait()
+
+    assert manager.snapshot().category_errors == {}
+    assert manager.snapshot().run_error == "post save failed"
+    assert repository.latest_crawl_run().status is CrawlRunStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_final_history_write_failure_exposes_run_error(
+    manager,
+    repository: Repository,
+    fake_crawler: FakeCrawler,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_crawler.results = (CategoryResult("central"),)
+    original_finish = repository.finish_crawl_run
+    attempts = 0
+
+    def fail_first_finish(*args, **kwargs) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("history finish failed")
+        original_finish(*args, **kwargs)
+
+    monkeypatch.setattr(repository, "finish_crawl_run", fail_first_finish)
+
+    assert manager.start("manual", ("central",)) is True
+    await manager.wait()
+
+    assert manager.snapshot().category_errors == {}
+    assert manager.snapshot().run_error == "history finish failed"
+    assert repository.latest_crawl_run().status is CrawlRunStatus.FAILED

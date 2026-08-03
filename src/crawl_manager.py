@@ -57,6 +57,7 @@ class CrawlManager:
         run_id: int | None = None
         results: tuple[CategoryResult, ...] = ()
         new_count = 0
+        run_error: str | None = None
 
         async def on_result(result: CategoryResult) -> None:
             try:
@@ -101,7 +102,8 @@ class CrawlManager:
                 new_count,
                 results,
             )
-        except Exception:
+        except Exception as exc:
+            run_error = str(exc) or type(exc).__name__
             logger.exception("Could not finish crawl run")
             if run_id is not None:
                 try:
@@ -122,6 +124,7 @@ class CrawlManager:
                     total_categories=len(categories),
                     new_count=new_count,
                     category_errors=errors,
+                    run_error=run_error,
                 )
             self._task = None
 
@@ -142,6 +145,7 @@ def _snapshot(
     total_categories: int = 0,
     new_count: int = 0,
     category_errors: Mapping[str, str] | None = None,
+    run_error: str | None = None,
 ) -> CrawlSnapshot:
     return CrawlSnapshot(
         running=running,
@@ -149,4 +153,5 @@ def _snapshot(
         total_categories=total_categories,
         new_count=new_count,
         category_errors=MappingProxyType(dict(category_errors or {})),
+        run_error=run_error,
     )

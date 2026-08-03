@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ class CrawlCoordinator(Protocol):
 
 ManagerFactory = Callable[[Repository], CrawlCoordinator]
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
+logger = logging.getLogger(__name__)
 
 
 class LinkRequest(BaseModel):
@@ -47,13 +49,6 @@ class StatusRequest(LinkRequest):
 class SettingsRequest(Settings):
     institution_keywords: list[str]
     role_keywords: list[str]
-
-    @field_validator("institution_keywords", "role_keywords")
-    @classmethod
-    def keywords_must_contain_text(cls, values: list[str]) -> list[str]:
-        if not any(value.strip() for value in values):
-            raise ValueError("at least one non-empty keyword is required")
-        return values
 
 
 def create_app(
@@ -147,6 +142,7 @@ def create_app(
             "total_categories": snapshot.total_categories,
             "new_count": snapshot.new_count,
             "category_errors": dict(snapshot.category_errors),
+            "run_error": snapshot.run_error,
         }
 
     @app.get("/api/settings")
@@ -160,11 +156,11 @@ def create_app(
     def update_settings(request: Request, data: SettingsRequest) -> dict[str, object]:
         repository = _repository(request)
         try:
-            repository.update_settings(
-                Settings(concurrency=data.concurrency, open_browser=data.open_browser)
+            repository.update_preferences(
+                Settings(concurrency=data.concurrency, open_browser=data.open_browser),
+                data.institution_keywords,
+                data.role_keywords,
             )
-            repository.replace_keywords("institution", data.institution_keywords)
-            repository.replace_keywords("role", data.role_keywords)
             return _settings_response(repository)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -204,6 +200,10 @@ def _manager(request: Request) -> CrawlCoordinator:
 
 
 def _database_unavailable(exc: Exception) -> HTTPException:
+    logger.error(
+        "Database operation failed",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
     return HTTPException(status_code=503, detail="Database is temporarily unavailable")
 
 

@@ -19,7 +19,7 @@ from src.domain import (
     PostStatus,
     Settings,
 )
-from src.parsing import contains_keyword, filter_roles, parse_deadline, parse_title
+from src.parsing import extract_institution, filter_roles, parse_deadline, parse_title
 
 
 KeywordKind = Literal["institution", "role"]
@@ -73,8 +73,11 @@ class Repository:
 
         visible: list[dict[str, object]] = []
         for row in rows:
+            institution = row["institution"] or extract_institution(
+                row["original_title"]
+            )
             parsed = ParsedTitle(
-                institution=row["institution"],
+                institution=institution,
                 employment=row["employment"],
                 career=row["career"],
                 roles=tuple(json.loads(row["roles_json"])),
@@ -82,8 +85,6 @@ class Repository:
             should_show, roles = filter_roles(
                 parsed, institution_keywords, role_keywords
             )
-            if not parsed.institution and not parsed.roles:
-                should_show = contains_keyword(row["original_title"], institution_keywords)
             if should_show:
                 visible.append(
                     {
@@ -91,7 +92,7 @@ class Repository:
                         "link": row["link"],
                         "category": row["category"],
                         "original_title": row["original_title"],
-                        "institution": row["institution"],
+                        "institution": institution,
                         "employment": row["employment"],
                         "career": row["career"],
                         "roles": roles,
@@ -199,6 +200,22 @@ class Repository:
                 (settings.concurrency, int(settings.open_browser)),
             )
 
+    def update_preferences(
+        self,
+        settings: Settings,
+        institution_keywords: list[str],
+        role_keywords: list[str],
+    ) -> None:
+        normalized_institutions = _normalize_keywords(institution_keywords)
+        normalized_roles = _normalize_keywords(role_keywords)
+        with self._connection() as connection, connection:
+            connection.execute(
+                "UPDATE app_settings SET concurrency = ?, open_browser = ? WHERE id = 1",
+                (settings.concurrency, int(settings.open_browser)),
+            )
+            _replace_keyword_rows(connection, "institution", normalized_institutions)
+            _replace_keyword_rows(connection, "role", normalized_roles)
+
     def get_keywords(self, kind: KeywordKind) -> tuple[str, ...]:
         _validate_keyword_kind(kind)
         with self._connection() as connection:
@@ -211,15 +228,9 @@ class Repository:
     def replace_keywords(self, kind: KeywordKind, values: list[str]) -> None:
         _validate_keyword_kind(kind)
         normalized = _normalize_keywords(values)
-        if not normalized:
-            raise ValueError("At least one non-empty keyword is required")
 
         with self._connection() as connection, connection:
-            connection.execute("DELETE FROM filter_keywords WHERE kind = ?", (kind,))
-            connection.executemany(
-                "INSERT INTO filter_keywords(kind, keyword) VALUES (?, ?)",
-                ((kind, keyword) for keyword in normalized),
-            )
+            _replace_keyword_rows(connection, kind, normalized)
 
     def create_crawl_run(self, trigger: str) -> int:
         with self._connection() as connection, connection:
@@ -281,7 +292,7 @@ def _crawled_values(
     parsed_deadline: ParsedDeadline,
     now: str,
 ) -> tuple[object, ...]:
-    title = parsed_title or ParsedTitle("", "", "", ())
+    title = parsed_title or ParsedTitle(extract_institution(post.title), "", "", ())
     return (
         post.link,
         post.category,
@@ -310,6 +321,18 @@ def _normalize_keywords(values: list[str]) -> tuple[str, ...]:
             keywords.append(keyword)
             seen.add(normalized)
     return tuple(keywords)
+
+
+def _replace_keyword_rows(
+    connection: sqlite3.Connection,
+    kind: KeywordKind,
+    keywords: tuple[str, ...],
+) -> None:
+    connection.execute("DELETE FROM filter_keywords WHERE kind = ?", (kind,))
+    connection.executemany(
+        "INSERT INTO filter_keywords(kind, keyword) VALUES (?, ?)",
+        ((kind, keyword) for keyword in keywords),
+    )
 
 
 def _validate_keyword_kind(kind: str) -> None:

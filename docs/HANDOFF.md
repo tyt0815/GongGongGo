@@ -59,9 +59,11 @@ git diff --check
 - 제외 후 실행 취소
 - 설정 저장 뒤 앱 재시작 시 동시성, 브라우저 열기, 키워드 유지
 - 키워드 변경 직후 현재 공고의 표시 직무 재필터링
+- `/`가 포함된 실패 카테고리 재시도와 완료 polling
+- 실행 단위 저장 실패 표시와 빠른 수집 완료 후 버튼/목록 갱신
 - 카드 내부 버튼, 구조화·fallback 제목, 긴 직무 tooltip, 설정 drawer, 진행 상태와 한국어 렌더링
 
-2026-08-03 Python 3.12.10 전체 실행 결과는 `78 passed, 1 warning`입니다. 경고 하나는 Starlette `TestClient`가 현재 `httpx` 사용을 deprecated로 알리는 제3자 호환성 경고이며 테스트 실패나 앱 런타임 오류는 아닙니다.
+2026-08-03 Python 3.12.10 전체 실행 결과는 경고를 오류로 처리한 상태에서 `99 passed, 0 warnings`입니다. Starlette `TestClient`는 개발 의존성 `httpx2`를 사용하며 별도 Node.js 테스트 전제는 없습니다.
 
 안전한 smoke에서는 실제 `create_app`과 Uvicorn을 임시 loopback 포트에서 실행하고, 임시 JSON 3건 마이그레이션, `/health` 200, 백그라운드 진행 `1/4`, 상태 변경과 재시작 설정 유지를 확인했습니다. `ggg_debug.bat`의 고정 포트 `8000`은 기존 구 UI 서버(PID 23684)가 이미 점유하고 `/health`에 404를 반환해 이번 세션에서는 실행하지 않았습니다. 사용자 프로세스를 임의로 종료하지 않았으며, 해당 서버를 정상 종료한 뒤 debug BAT의 운영 데이터 read-only smoke와 로그 생성을 별도로 확인해야 합니다.
 
@@ -93,6 +95,7 @@ Task 10 수행 중 E2E가 찾아낸 세 회귀도 테스트로 고정되어 있�
 - `e77a1a7`, `012e8e1`, `80f370b`, `9e96b1a`, `ffda179` dashboard and interaction corrections
 - `4e6dba1`, `1d62e9f` runtime launch, retained logs and logger capture
 - Task 10의 `test: verify modernized local workflow` 커밋: E2E, 문서, legacy `test.py` 제거와 E2E 발견 회귀 수정
+- `fix: address final modernization review`: 최종 리뷰의 파싱·설정 원자성·재시도 UI·작업 정리·실행 오류·통합 로그·테스트 의존성 수정
 
 ## 다음 작업 시 주의
 

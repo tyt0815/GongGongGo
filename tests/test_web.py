@@ -1,11 +1,13 @@
 import sqlite3
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.database import initialize_database
-from src.domain import CrawlSnapshot, CrawledPost
+from src.database import connect, initialize_database
+from src.domain import CrawlSnapshot, CrawledPost, Settings
 from src.repository import Repository
 
 
@@ -160,15 +162,52 @@ def test_settings_validation_and_keyword_replacement(client, repository: Reposit
         "role_keywords": ["Software"],
     }
     assert repository.get_keywords("institution") == ("Target", "Other")
-    assert client.put(
+    empty_response = client.put(
         "/api/settings",
         json={
             "concurrency": 2,
             "open_browser": False,
             "institution_keywords": [" "],
-            "role_keywords": ["전산"],
+            "role_keywords": [],
         },
-    ).status_code == 422
+    )
+    assert empty_response.status_code == 200
+    assert empty_response.json()["institution_keywords"] == []
+    assert empty_response.json()["role_keywords"] == []
+
+
+def test_settings_api_rolls_back_all_preferences_on_mid_save_failure(
+    client, repository: Repository
+) -> None:
+    repository.update_settings(Settings(concurrency=1, open_browser=False))
+    repository.replace_keywords("institution", ["Old Institution"])
+    repository.replace_keywords("role", ["Old Role"])
+    with connect(repository.db_path) as connection, connection:
+        connection.execute(
+            """
+            CREATE TRIGGER fail_role_keyword_insert
+            BEFORE INSERT ON filter_keywords
+            WHEN NEW.kind = 'role'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced role failure');
+            END
+            """
+        )
+
+    response = client.put(
+        "/api/settings",
+        json={
+            "concurrency": 4,
+            "open_browser": True,
+            "institution_keywords": ["New Institution"],
+            "role_keywords": ["New Role"],
+        },
+    )
+
+    assert response.status_code == 503
+    assert repository.get_settings() == Settings(concurrency=1, open_browser=False)
+    assert repository.get_keywords("institution") == ("Old Institution",)
+    assert repository.get_keywords("role") == ("Old Role",)
 
 
 def test_delete_and_unblock_link(client, seeded_post: CrawledPost) -> None:
@@ -205,6 +244,23 @@ def test_retry_accepts_failed_category_with_slash_in_its_name(client, app_parts)
     assert managers[0].starts[-1] == ("retry", ("인턴/계약직",))
 
 
+def test_crawl_status_exposes_run_level_failure(client, app_parts) -> None:
+    _, _, managers = app_parts
+    managers[0].snapshot = lambda: SimpleNamespace(
+        running=False,
+        completed_categories=1,
+        total_categories=1,
+        new_count=0,
+        category_errors={},
+        run_error="history finish failed",
+    )
+
+    response = client.get("/api/crawl/status")
+
+    assert response.status_code == 200
+    assert response.json()["run_error"] == "history finish failed"
+
+
 @pytest.mark.parametrize("error", [sqlite3.OperationalError("locked"), RuntimeError("closed")])
 def test_home_maps_repository_errors_to_service_unavailable(client, monkeypatch, error) -> None:
     def raise_error():
@@ -216,6 +272,21 @@ def test_home_maps_repository_errors_to_service_unavailable(client, monkeypatch,
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Database is temporarily unavailable"}
+
+
+def test_api_database_exception_is_logged_before_returning_503(
+    client, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def raise_error():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(client.app.state.repository, "list_visible_posts", raise_error)
+
+    with caplog.at_level(logging.ERROR, logger="src.web"):
+        response = client.get("/api/posts")
+
+    assert response.status_code == 503
+    assert "database is locked" in caplog.text
 
 
 def test_home_escapes_korean_title_with_quotes(client, repository: Repository) -> None:
