@@ -205,3 +205,45 @@ def test_crawl_history_records_partial_failure(repository):
         ("central", "succeeded", 0, None),
         ("local", "failed", 0, "timed out"),
     ]
+
+
+def test_crawl_history_treats_an_empty_error_as_failure(repository):
+    run_id = repository.create_crawl_run("manual")
+
+    repository.finish_crawl_run(
+        run_id,
+        CrawlRunStatus.FAILED,
+        0,
+        (CategoryResult(category="central", error=""),),
+    )
+
+    with connect(repository.db_path) as connection:
+        result = connection.execute(
+            "SELECT status, error_summary FROM crawl_category_results WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    assert tuple(result) == ("failed", "")
+
+
+def test_existing_link_set_includes_all_persisted_posts(repository):
+    repository.upsert_crawled_posts(
+        [
+            CrawledPost(
+                category="central",
+                title="[Target Agency] full-time (software)",
+                deadline_raw="2026.08.10",
+                link="https://example.test/one",
+            ),
+            CrawledPost(
+                category="local",
+                title="[General Agency] full-time (accounting)",
+                deadline_raw="2026.08.11",
+                link="https://example.test/two",
+            ),
+        ]
+    )
+
+    assert repository.list_existing_links() == {
+        "https://example.test/one",
+        "https://example.test/two",
+    }

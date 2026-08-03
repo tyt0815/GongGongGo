@@ -62,7 +62,7 @@ class CrawlManager:
             try:
                 async with self._snapshot_lock:
                     errors = dict(self._snapshot.category_errors)
-                    if result.error:
+                    if result.error is not None:
                         errors[result.category] = result.error
                     self._snapshot = _snapshot(
                         running=True,
@@ -80,7 +80,7 @@ class CrawlManager:
                 results = await self._crawl(
                     categories,
                     self._repository.get_settings().concurrency,
-                    set(),
+                    self._repository.list_existing_links(),
                     {record.link for record in self._repository.list_deleted_links()},
                     on_result,
                 )

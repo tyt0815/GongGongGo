@@ -81,6 +81,29 @@ class ReturnMarkingCrawler(FakeCrawler):
         return results
 
 
+class ProgressCrawler(FakeCrawler):
+    def __init__(self, result: CategoryResult) -> None:
+        super().__init__()
+        self.results = (result,)
+        self.progressed = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(
+        self,
+        categories: Mapping[str, str],
+        concurrency: int,
+        known_links: set[str],
+        blocked_links: set[str],
+        on_result: ResultCallback | None = None,
+    ) -> tuple[CategoryResult, ...]:
+        self.calls.append((dict(categories), concurrency, known_links, blocked_links))
+        if on_result is not None:
+            await on_result(self.results[0])
+        self.progressed.set()
+        await self.release.wait()
+        return self.results
+
+
 @pytest.fixture
 def repository(tmp_path: Path) -> Repository:
     db_path = tmp_path / "gonggonggo.db"
@@ -139,6 +162,39 @@ async def test_partial_failure_saves_successes_and_exposes_category_error(
     assert repository.get_post("https://example.test/a") is not None
     assert manager.snapshot().category_errors == {"local": "timeout"}
     assert repository.latest_crawl_run().status is CrawlRunStatus.PARTIAL
+
+
+@pytest.mark.asyncio
+async def test_progress_keeps_an_empty_error_as_a_category_failure(
+    repository: Repository, target_urls: dict[str, str]
+) -> None:
+    from src.crawl_manager import CrawlManager
+
+    crawler = ProgressCrawler(CategoryResult("central", error=""))
+    manager = CrawlManager(repository, crawl=crawler, target_urls=target_urls)
+
+    assert manager.start("manual", ("central",)) is True
+    await crawler.progressed.wait()
+    assert manager.snapshot().category_errors == {"central": ""}
+
+    crawler.release.set()
+    await manager.wait()
+
+
+@pytest.mark.asyncio
+async def test_manager_passes_existing_and_deleted_links_to_crawler(
+    manager, repository: Repository, fake_crawler: FakeCrawler
+) -> None:
+    known = make_post("https://example.test/known")
+    deleted = make_post("https://example.test/deleted")
+    repository.upsert_crawled_posts([known, deleted])
+    assert repository.delete_permanently(deleted.link) is True
+
+    assert manager.start("manual", ("central",)) is True
+    await manager.wait()
+
+    assert fake_crawler.calls[0][2] == {known.link}
+    assert fake_crawler.calls[0][3] == {deleted.link}
 
 
 @pytest.mark.asyncio

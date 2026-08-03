@@ -169,6 +169,11 @@ class Repository:
             ).fetchall()
         return tuple(DeletedLinkRecord(id=row["id"], link=row["link"]) for row in rows)
 
+    def list_existing_links(self) -> set[str]:
+        with self._connection() as connection:
+            rows = connection.execute("SELECT link FROM job_posts").fetchall()
+        return {row["link"] for row in rows}
+
     def unblock_link(self, id: int) -> bool:
         with self._connection() as connection, connection:
             result = connection.execute("DELETE FROM deleted_links WHERE id = ?", (id,))
@@ -248,7 +253,7 @@ class Repository:
                     (
                         run_id,
                         result.category,
-                        "failed" if result.error else "succeeded",
+                        "failed" if result.error is not None else "succeeded",
                         len(result.posts),
                         result.error,
                     )
