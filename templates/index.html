@@ -1,115 +1,113 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="ko">
 <head>
-    <title>채용 공고지기</title>
-    <style>
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; overflow: hidden; }
-        th { background-color: #f4f4f4; }
-        
-        /* 컬럼별 크기 고정 */
-        th:nth-child(3), td:nth-child(3) { width: 110px; text-align: center; } /* 마감일 */
-        /* 상태 전이 버튼 */
-        th:nth-child(1) { width: 100px; text-align: center; } 
-        td:nth-child(1) { 
-            width: 100px; 
-            text-align: center; 
-            display: flex;          /* 가로 정렬 시작 */
-            justify-content: center; 
-            gap: 2px; 
-            align-items: center;    /* 버튼을 세로로도 중앙 정렬하려면 추가 */
-        }
-        
-        /* 제목은 남은 공간 모두 차지 + 말줄임표 처리 */
-        td:nth-child(2) { white-space: nowrap; text-overflow: ellipsis; }
-        
-        .deadline-soon { color: red; font-weight: bold; }
-
-        /* 모든 a 태그의 기본 스타일 */
-        a {
-            text-decoration: none; /* 밑줄 제거 */
-            color: #333;           /* 텍스트 색상 (검정색 계열) */
-        }
-
-        /* 마우스를 올렸을 때 하이라이트 */
-        a:hover {
-            color: #007bff;        /* 마우스 올리면 파란색으로 변하게 */
-            text-decoration: underline; /* 밑줄 표시 */
-        }
-
-        a:visited { color: #551a8b; } /* 브라우저 기본값과 유사하지만 조금 더 세련됨 */
-
-        /* 버튼 스타일 */
-        button {
-            width: 48%;                /* 50%보다 조금 작게 설정 */
-            padding: 5px 0;
-            cursor: pointer;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background-color: #f9f9f9;
-            font-size: 11px;           /* 글자가 작으면 크기를 조금 줄임 */
-        }
-
-        button:hover { background-color: #e0e0e0; }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>공공고 - 채용 공고</title>
+    <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-    {% macro render_post_table(post_list, title) %}
-    <h2>{{ title }} ({{ post_list|length }})</h2>
-    <table>
-        <thead>
-            <tr>
-                <th></th>
-                <th>제목</th>
-                <th>마감일</th>
-            </tr>
-        </thead>
-        {% macro render_status_buttons(post) %}
-            {% if post.state == '지원 예정' %}
-                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
-                <button onclick="updateStatus('{{ post.link }}', '대기')">대기</button>
-            {% elif post.state == '대기' %}
-                <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
-                <button onclick="updateStatus('{{ post.link }}', '완료')">완료</button>
-            {% else %}
-                <button onclick="updateStatus('{{ post.link }}', '대기')">대기</button>
-                <button onclick="updateStatus('{{ post.link }}', '지원 예정')">지원 예정</button>
-            {% endif %}
-        {% endmacro %}
+    <main class="dashboard-shell">
+        <header class="app-header">
+            <div>
+                <p class="eyebrow">GONGGONGGO</p>
+                <h1>공공 채용 공고</h1>
+            </div>
+            <div class="header-actions">
+                <button id="crawl-button" class="primary-button" type="button">새로 수집</button>
+                <button id="settings-button" class="secondary-button" type="button" aria-controls="settings-drawer" aria-expanded="false">설정</button>
+            </div>
+        </header>
 
-        <tbody>
-            {% for post in post_list %}
-            <tr>
-                <td>
-                    {{ render_status_buttons(post) }}
-                </td>
-                <td><a href="{{ post.link }}" target="_blank">{{ post.title }}</a></td>
-                <td class="deadline-soon">{{ post.deadline }}</td>
-            </tr>
+        <section class="crawl-region" aria-live="polite">
+            <span id="crawl-status">수집 상태를 확인하는 중입니다.</span>
+            <span id="crawl-errors"></span>
+        </section>
+
+        <section class="toolbar" aria-label="공고 필터">
+            <label>검색 <input id="search-input" type="search" placeholder="기관명, 직무, 제목 검색"></label>
+            <label>카테고리 <select id="category-filter"><option value="">전체 카테고리</option></select></label>
+            <label>정렬 <select id="sort-select"><option value="deadline">마감 임박순</option><option value="recent">최근 확인순</option></select></label>
+        </section>
+
+        <nav class="group-tabs" aria-label="넓은 화면 보기">
+            <button type="button" class="selected" data-group-tab="active">진행 중</button>
+            <button type="button" data-group-tab="archive">보관함</button>
+        </nav>
+
+        <section class="wide-view" data-view-group="active">
+            <section class="lane" data-lane="review_pending">
+                <h2>검토 대기 <span data-count="review_pending">0</span></h2>
+                <div class="card-list" data-post-list="review_pending"></div>
+            </section>
+            <section class="lane" data-lane="planned">
+                <h2>지원 예정 <span data-count="planned">0</span></h2>
+                <div class="card-list" data-post-list="planned"></div>
+            </section>
+        </section>
+
+        <section class="wide-view" data-view-group="archive" hidden>
+            <section class="lane" data-lane="applied">
+                <h2>지원 완료 <span data-count="applied">0</span></h2>
+                <div class="card-list" data-post-list="applied"></div>
+            </section>
+            <section class="lane" data-lane="excluded">
+                <h2>제외 <span data-count="excluded">0</span></h2>
+                <div class="card-list" data-post-list="excluded"></div>
+            </section>
+        </section>
+
+        <section class="narrow-view" aria-label="상태별 공고">
+            <nav class="status-tabs" aria-label="공고 상태">
+                <button type="button" class="selected" data-status-tab="review_pending">검토 대기</button>
+                <button type="button" data-status-tab="planned">지원 예정</button>
+                <button type="button" data-status-tab="applied">지원 완료</button>
+                <button type="button" data-status-tab="excluded">제외</button>
+            </nav>
+            <section class="status-panel" data-status-panel="review_pending">
+                <h2>검토 대기 <span data-count="review_pending">0</span></h2>
+                <div class="card-list" data-post-list="review_pending"></div>
+            </section>
+            <section class="status-panel" data-status-panel="planned" hidden>
+                <h2>지원 예정 <span data-count="planned">0</span></h2>
+                <div class="card-list" data-post-list="planned"></div>
+            </section>
+            <section class="status-panel" data-status-panel="applied" hidden>
+                <h2>지원 완료 <span data-count="applied">0</span></h2>
+                <div class="card-list" data-post-list="applied"></div>
+            </section>
+            <section class="status-panel" data-status-panel="excluded" hidden>
+                <h2>제외 <span data-count="excluded">0</span></h2>
+                <div class="card-list" data-post-list="excluded"></div>
+            </section>
+        </section>
+    </main>
+
+    <aside id="settings-drawer" class="settings-drawer" aria-label="설정" hidden>
+        <div class="settings-heading"><h2>설정</h2><button id="settings-close" type="button" aria-label="설정 닫기">×</button></div>
+        <form id="settings-form">
+            <fieldset><legend>동시 수집 작업 수</legend>
+                <label><input type="radio" name="concurrency" value="1"> 1</label>
+                <label><input type="radio" name="concurrency" value="2"> 2</label>
+                <label><input type="radio" name="concurrency" value="4"> 4</label>
+            </fieldset>
+            <label class="toggle-label"><input id="open-browser" type="checkbox"> 시작 시 브라우저 열기</label>
+            <section><h3>대상 기관 키워드</h3><div id="institution-keywords" class="keyword-editor"></div><label>키워드 추가 <input id="institution-keyword-input" type="text"></label></section>
+            <section><h3>IT 직무 키워드</h3><div id="role-keywords" class="keyword-editor"></div><label>키워드 추가 <input id="role-keyword-input" type="text"></label></section>
+            <button class="primary-button" type="submit">설정 저장</button>
+        </form>
+        <section class="deleted-links-section"><h3>영구 삭제한 링크</h3><p>차단을 해제하면 다음 수집에서 공고가 다시 나타날 수 있습니다.</p><ul id="deleted-links"></ul></section>
+    </aside>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="error-message" class="error-message" role="alert" hidden></div>
+    <noscript>
+        <section aria-label="스크립트 없이 볼 수 있는 공고 목록">
+            {% for post in posts %}
+            <p><a href="{{ post.link }}">{{ post.original_title }}</a></p>
             {% endfor %}
-        </tbody>
-    </table>
-    {% endmacro %}
-
-    {{ render_post_table(upcoming_posts, "지원 예정") }}
-    {{ render_post_table(unread_posts, "대기") }}
-    {{ render_post_table(processed_posts, "완료") }}
-
+        </section>
+    </noscript>
+    <script src="/static/app.js" defer></script>
 </body>
 </html>
-
-<script>
-async function updateStatus(link, newState) {
-    const response = await fetch('/update-status', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ link: link, state: newState })
-    });
-    
-    if (response.ok) {
-        location.reload(); // 성공 시 리스트 갱신
-    } else {
-        alert("오류가 발생했습니다.");
-    }
-}
-</script>

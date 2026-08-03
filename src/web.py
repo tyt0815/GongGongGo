@@ -6,6 +6,7 @@ from typing import Protocol
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
@@ -76,6 +77,7 @@ def create_app(
             await manager.wait()
 
     app = FastAPI(lifespan=lifespan)
+    app.mount("/static", StaticFiles(directory=PROJECT_ROOT / "static"), name="static")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -90,7 +92,7 @@ def create_app(
         return templates.TemplateResponse(
             request=request,
             name="index.html",
-            context=_legacy_template_context(posts),
+            context={"posts": posts},
         )
 
     @app.get("/api/posts")
@@ -225,26 +227,3 @@ def _json_posts(posts: list[dict[str, object]]) -> list[dict[str, object]]:
             }
         )
     return serialized
-
-
-def _legacy_template_context(posts: list[dict[str, object]]) -> dict[str, object]:
-    status_names = {
-        PostStatus.REVIEW_PENDING: "대기",
-        PostStatus.PLANNED: "지원 예정",
-        PostStatus.APPLIED: "완료",
-        PostStatus.EXCLUDED: "제외",
-    }
-    legacy_posts = [
-        {
-            "link": post["link"],
-            "title": post["original_title"],
-            "deadline": post["deadline_raw"],
-            "state": status_names[post["status"]],
-        }
-        for post in posts
-    ]
-    return {
-        "unread_posts": [post for post in legacy_posts if post["state"] == "대기"],
-        "upcoming_posts": [post for post in legacy_posts if post["state"] == "지원 예정"],
-        "processed_posts": [post for post in legacy_posts if post["state"] == "완료"],
-    }
