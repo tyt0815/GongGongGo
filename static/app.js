@@ -268,8 +268,8 @@
   async function startCrawl() {
     try {
       await request("/api/crawl/start", { method: "POST" });
-      const snapshot = await checkCrawlStatus();
       crawlButton.disabled = true;
+      const snapshot = await checkCrawlStatus();
       if (snapshot?.running !== false) startPolling();
       if (snapshot?.running === false) await refreshPosts();
     } catch (error) { showError(error.message); }
