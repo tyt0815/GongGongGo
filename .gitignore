@@ -182,6 +182,7 @@ cython_debug/
 
 # Local brainstorming companion artifacts
 .superpowers/
+.worktrees/
 
 # GongGongGo runtime files
 logs/
