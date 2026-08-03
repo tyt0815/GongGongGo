@@ -22,7 +22,7 @@
 - `templates/index.html`, `static/app.css`, `static/app.js`: 반응형 대시보드와 설정 UI
 - `src/logging_config.py`, `src/runtime.py`: 날짜별 로그, 보존 정리, 선택적 브라우저 열기, 로컬 Uvicorn 실행
 - `ggg_startup.vbs`: 숨김 실행, `ggg_startup.bat`: 기존 스케줄러용 VBS 래퍼
-- `ggg_debug.bat`: 콘솔 유지 디버그 실행
+- `ggg_debug.bat`: `main.py --debug`으로 콘솔과 Playwright Chromium GUI를 함께 표시하는 디버그 실행
 - `tests/`: 파서·DB·저장소·크롤러·관리자·API·UI 계약 테스트
 - `tests/e2e/test_dashboard_layout.py`: 임시 DB/JSON, 무네트워크 관리자와 실제 Chromium을 사용하는 loopback E2E
 
@@ -38,6 +38,7 @@
 - 대상 기관은 직무와 무관하게 표시하고, 일반 기관은 파싱된 직무 키워드가 일치할 때만 표시합니다.
 - 설정 drawer는 저장된 값을 모두 읽은 뒤 열어, 로딩 중 사용자 입력이 늦은 응답에 덮이지 않게 합니다.
 - 넓은 화면은 현재 선택한 묶음의 두 lane만 표시하고, 좁은 화면은 네 상태 중 한 panel만 표시합니다.
+- 일반 및 숨김 실행의 크롤러는 headless 모드이며, `--debug` 실행에서만 실제 Chromium 창을 표시합니다.
 
 ## 데이터와 안전한 작업 방법
 

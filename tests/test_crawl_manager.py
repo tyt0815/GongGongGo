@@ -131,6 +131,39 @@ def manager(repository: Repository, fake_crawler: FakeCrawler, target_urls: dict
 
 
 @pytest.mark.asyncio
+async def test_manager_forwards_visible_browser_mode_to_default_crawler(
+    repository: Repository,
+    target_urls: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.crawl_manager as crawl_manager
+
+    launch_modes: list[bool] = []
+
+    async def recording_crawler(
+        categories: Mapping[str, str],
+        concurrency: int,
+        known_links: set[str],
+        blocked_links: set[str],
+        on_result: ResultCallback | None = None,
+        *,
+        headless: bool = True,
+    ) -> tuple[CategoryResult, ...]:
+        launch_modes.append(headless)
+        return tuple(CategoryResult(category) for category in categories)
+
+    monkeypatch.setattr(crawl_manager, "crawl_categories", recording_crawler)
+    manager = crawl_manager.CrawlManager(
+        repository, target_urls=target_urls, headless=False
+    )
+
+    assert manager.start("manual") is True
+    await manager.wait()
+
+    assert launch_modes == [False]
+
+
+@pytest.mark.asyncio
 async def test_start_rejects_a_duplicate_while_a_run_is_active(
     repository: Repository, target_urls: dict[str, str]
 ) -> None:
@@ -149,16 +182,25 @@ async def test_start_rejects_a_duplicate_while_a_run_is_active(
 
 @pytest.mark.asyncio
 async def test_partial_failure_saves_successes_and_exposes_category_error(
-    manager, repository: Repository, fake_crawler: FakeCrawler
+    manager,
+    repository: Repository,
+    fake_crawler: FakeCrawler,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     fake_crawler.results = (
         CategoryResult("central", posts=(make_post("https://example.test/a"),)),
         CategoryResult("local", error="timeout"),
     )
 
-    assert manager.start("manual") is True
-    await manager.wait()
+    with caplog.at_level("INFO", logger="src.crawl_manager"):
+        assert manager.start("manual") is True
+        await manager.wait()
 
+    assert "Crawl scheduled: trigger=manual categories=central,local" in caplog.text
+    assert "Crawl run started:" in caplog.text
+    assert "Category result received: category=central posts=1 error=none" in caplog.text
+    assert "Saving crawl posts: successful_posts=1" in caplog.text
+    assert "Crawl run finished:" in caplog.text
     assert repository.get_post("https://example.test/a") is not None
     assert manager.snapshot().category_errors == {"local": "timeout"}
     assert repository.latest_crawl_run().status is CrawlRunStatus.PARTIAL

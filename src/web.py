@@ -55,13 +55,16 @@ def create_app(
     db_path: Path = DB_PATH,
     json_path: Path = JSON_PATH,
     manager_factory: ManagerFactory | None = None,
+    crawler_headless: bool = True,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_database(db_path, json_path)
         repository = Repository(db_path)
         manager = (
-            manager_factory(repository) if manager_factory is not None else CrawlManager(repository)
+            manager_factory(repository)
+            if manager_factory is not None
+            else CrawlManager(repository, headless=crawler_headless)
         )
         app.state.repository = repository
         app.state.manager = manager
@@ -120,13 +123,13 @@ def create_app(
             raise _database_unavailable(exc) from exc
 
     @app.post("/api/crawl/start")
-    def start_crawl(request: Request) -> dict[str, bool]:
+    async def start_crawl(request: Request) -> dict[str, bool]:
         if not _manager(request).start("manual"):
             raise HTTPException(status_code=409, detail="A crawl is already running")
         return {"started": True}
 
     @app.post("/api/crawl/retry/{category:path}")
-    def retry_failed_category(request: Request, category: str) -> dict[str, object]:
+    async def retry_failed_category(request: Request, category: str) -> dict[str, object]:
         if category not in _manager(request).snapshot().category_errors:
             raise HTTPException(status_code=422, detail="Category is not eligible for retry")
         if not _manager(request).start("retry", (category,)):

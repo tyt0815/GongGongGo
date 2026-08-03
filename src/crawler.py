@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
@@ -47,7 +48,6 @@ async def _extract_row(element: Any, category: str) -> CrawledPost:
         link=link,
     )
 
-
 async def crawl_category(
     page: Any,
     category: str,
@@ -58,37 +58,119 @@ async def crawl_category(
 ) -> CategoryResult:
     posts: list[CrawledPost] = []
 
+    # 쿼리 문자열을 제거한 링크 집합을 미리 생성
+    normalized_known_links = {
+        link.partition("?")[0]
+        for link in known_links
+    }
+
+    logger.info("Category crawl started: category=%s", category)
+
     for page_number in range(1, MAX_PAGES + 1):
-        await page.goto(f"{base_url}?viewType=L&page={page_number}", wait_until="networkidle")
+        logger.info(
+            "Page load started: category=%s page=%d",
+            category,
+            page_number,
+        )
+
+        load_started = time.monotonic()
+
+        await page.goto(
+            f"{base_url}?viewType=L&page={page_number}",
+            wait_until="networkidle",
+        )
+
+        logger.info(
+            "Page load completed: category=%s page=%d elapsed=%.1fs",
+            category,
+            page_number,
+            time.monotonic() - load_started,
+        )
+
         missing_rows = 0
+
+        # 첫 번째 공고가 나타날 때까지 최대 5초간 확인
+        deadline = time.monotonic() + 5
+
+        while time.monotonic() < deadline:
+            element = await page.query_selector(
+                _row_selector(1, page_number == 1)
+            )
+
+            if element is not None:
+                break
+
+            await asyncio.sleep(0.1)
 
         for row_index in range(1, MAX_ROWS_PER_PAGE + 1):
             try:
-                element = await page.query_selector(_row_selector(row_index, page_number == 1))
+                element = await page.query_selector(
+                    _row_selector(row_index, page_number == 1)
+                )
             except Exception:
-                logger.exception("Skipping unreadable crawler row in %s", category)
+                logger.exception(
+                    "Skipping unreadable crawler row in %s",
+                    category,
+                )
                 continue
 
             if element is None:
                 missing_rows += 1
+
                 if missing_rows >= MISSING_ROW_LIMIT:
                     break
+
                 continue
+
             missing_rows = 0
 
             try:
                 post = await _extract_row(element, category)
             except Exception:
-                logger.exception("Skipping malformed crawler row in %s", category)
+                logger.exception(
+                    "Skipping malformed crawler row in %s",
+                    category,
+                )
                 continue
 
             if post.link in blocked_links:
                 continue
-            if early_stop and post.link in known_links:
-                return CategoryResult(category=category, posts=tuple(posts))
+
+            # 비교할 때만 ? 뒤의 쿼리 문자열을 제거
+            normalized_post_link = post.link.partition("?")[0]
+            
+            if early_stop and normalized_post_link in normalized_known_links:
+                logger.info(
+                    "Known post reached: category=%s page=%d link=%s collected=%d",
+                    category,
+                    page_number,
+                    normalized_post_link,
+                    len(posts),
+                )
+                return CategoryResult(
+                    category=category,
+                    posts=tuple(posts),
+                )
+
             posts.append(post)
 
-    return CategoryResult(category=category, posts=tuple(posts))
+        logger.info(
+            "Page scan completed: category=%s page=%d collected=%d",
+            category,
+            page_number,
+            len(posts),
+        )
+
+    logger.info(
+        "Category crawl completed: category=%s collected=%d",
+        category,
+        len(posts),
+    )
+
+    return CategoryResult(
+        category=category,
+        posts=tuple(posts),
+    )
 
 
 async def crawl_categories(
@@ -97,22 +179,44 @@ async def crawl_categories(
     known_links: set[str],
     blocked_links: set[str],
     on_result: Callable[[CategoryResult], Awaitable[None]] | None = None,
+    *,
+    headless: bool = True,
 ) -> tuple[CategoryResult, ...]:
     semaphore = asyncio.Semaphore(concurrency)
+    logger.info(
+        "Crawler starting: categories=%d concurrency=%d known_links=%d blocked_links=%d",
+        len(categories),
+        concurrency,
+        len(known_links),
+        len(blocked_links),
+    )
 
     async with async_playwright() as playwright:
         browser = None
         context = None
         try:
-            browser = await playwright.chromium.launch(headless=True)
+            logger.info("Chromium launch started: headless=%s", headless)
+            browser = await playwright.chromium.launch(headless=headless)
+            logger.info("Chromium launch completed")
             context = await browser.new_context()
+            logger.info("Browser context created")
 
             async def run_one(category: str, url: str) -> CategoryResult:
+                logger.info("Category waiting for worker: category=%s", category)
                 async with semaphore:
+                    logger.info("Category worker started: category=%s", category)
                     page = None
                     try:
                         page = await context.new_page()
-                        return await crawl_category(page, category, url, known_links, blocked_links)
+                        result = await crawl_category(
+                            page, category, url, known_links, blocked_links
+                        )
+                        logger.info(
+                            "Category worker completed: category=%s posts=%d",
+                            category,
+                            len(result.posts),
+                        )
+                        return result
                     except Exception as exc:
                         logger.exception("Crawler category failed: %s", category)
                         return CategoryResult(category=category, error=str(exc))
@@ -141,11 +245,16 @@ async def crawl_categories(
                 await asyncio.gather(*tasks, return_exceptions=True)
 
             result_by_category = {result.category: result for result in completed}
+            logger.info("All category workers completed: categories=%d", len(completed))
             return tuple(result_by_category[category] for category in categories)
         finally:
             try:
                 if context is not None:
+                    logger.info("Browser context close started")
                     await context.close()
+                    logger.info("Browser context close completed")
             finally:
                 if browser is not None:
+                    logger.info("Chromium close started")
                     await browser.close()
+                    logger.info("Chromium close completed")

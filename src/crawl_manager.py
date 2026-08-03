@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Mapping
+from functools import partial
 from types import MappingProxyType
 
 from .config import TARGET_URLS
@@ -23,11 +24,12 @@ class CrawlManager:
         self,
         repository: Repository,
         *,
-        crawl: CategoryCrawler = crawl_categories,
+        crawl: CategoryCrawler | None = None,
         target_urls: Mapping[str, str] = TARGET_URLS,
+        headless: bool = True,
     ) -> None:
         self._repository = repository
-        self._crawl = crawl
+        self._crawl = crawl or partial(crawl_categories, headless=headless)
         self._target_urls = dict(target_urls)
         self._task: asyncio.Task[None] | None = None
         self._snapshot_lock = asyncio.Lock()
@@ -35,12 +37,18 @@ class CrawlManager:
 
     def start(self, trigger: str, categories: tuple[str, ...] | None = None) -> bool:
         if self._task is not None:
+            logger.info("Crawl request rejected because a run is active: trigger=%s", trigger)
             return False
 
         selected_categories = categories or tuple(self._target_urls)
         selected_urls = {
             category: self._target_urls[category] for category in selected_categories
         }
+        logger.info(
+            "Crawl scheduled: trigger=%s categories=%s",
+            trigger,
+            ",".join(selected_categories),
+        )
         self._snapshot = _snapshot(running=True, total_categories=len(selected_urls))
         self._task = asyncio.create_task(self._run(trigger, selected_urls))
         return True
@@ -61,6 +69,12 @@ class CrawlManager:
 
         async def on_result(result: CategoryResult) -> None:
             try:
+                logger.info(
+                    "Category result received: category=%s posts=%d error=%s",
+                    result.category,
+                    len(result.posts),
+                    result.error if result.error is not None else "none",
+                )
                 async with self._snapshot_lock:
                     errors = dict(self._snapshot.category_errors)
                     if result.error is not None:
@@ -77,12 +91,26 @@ class CrawlManager:
 
         try:
             run_id = self._repository.create_crawl_run(trigger)
+            concurrency = self._repository.get_settings().concurrency
+            known_links = self._repository.list_existing_links()
+            blocked_links = {
+                record.link for record in self._repository.list_deleted_links()
+            }
+            logger.info(
+                "Crawl run started: id=%d trigger=%s categories=%d concurrency=%d known_links=%d blocked_links=%d",
+                run_id,
+                trigger,
+                len(categories),
+                concurrency,
+                len(known_links),
+                len(blocked_links),
+            )
             try:
                 results = await self._crawl(
                     categories,
-                    self._repository.get_settings().concurrency,
-                    self._repository.list_existing_links(),
-                    {record.link for record in self._repository.list_deleted_links()},
+                    concurrency,
+                    known_links,
+                    blocked_links,
                     on_result,
                 )
             except Exception as exc:
@@ -95,12 +123,20 @@ class CrawlManager:
             successful_posts = [
                 post for result in results if result.error is None for post in result.posts
             ]
+            logger.info("Saving crawl posts: successful_posts=%d", len(successful_posts))
             new_count = self._repository.upsert_crawled_posts(successful_posts)
+            run_status = _run_status(results)
             self._repository.finish_crawl_run(
                 run_id,
-                _run_status(results),
+                run_status,
                 new_count,
                 results,
+            )
+            logger.info(
+                "Crawl run finished: id=%d status=%s new_count=%d",
+                run_id,
+                run_status.value,
+                new_count,
             )
         except Exception as exc:
             run_error = str(exc) or type(exc).__name__

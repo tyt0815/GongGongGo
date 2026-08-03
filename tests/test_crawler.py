@@ -50,7 +50,9 @@ def fake_page() -> FakePage:
 
 
 @pytest.mark.asyncio
-async def test_category_collects_rows_and_stops_at_known_link(fake_page: FakePage) -> None:
+async def test_category_collects_rows_and_stops_at_known_link(
+    fake_page: FakePage, caplog: pytest.LogCaptureFixture
+) -> None:
     from src.crawler import crawl_category
 
     fake_page.add_page(1, [
@@ -58,11 +60,16 @@ async def test_category_collects_rows_and_stops_at_known_link(fake_page: FakePag
         ("[Old 채용] 정규직 신입 (전산) (~8.11)", "https://example/known"),
     ])
 
-    result = await crawl_category(
-        fake_page, "중앙공기업", "https://example/menu",
-        {"https://example/known"}, set(), early_stop=True,
-    )
+    with caplog.at_level("INFO", logger="src.crawler"):
+        result = await crawl_category(
+            fake_page, "중앙공기업", "https://example/menu",
+            {"https://example/known"}, set(), early_stop=True,
+        )
 
+    assert "Category crawl started: category=중앙공기업" in caplog.text
+    assert "Page load started: category=중앙공기업 page=1" in caplog.text
+    assert "Page load completed: category=중앙공기업 page=1" in caplog.text
+    assert "Known post reached: category=중앙공기업 page=1 collected=1" in caplog.text
     assert [post.link for post in result.posts] == ["https://example/new"]
     assert result.posts[0].title == "[A 채용] 정규직 신입 (전산)"
     assert result.posts[0].deadline_raw == "~8.10"
@@ -166,9 +173,10 @@ class FakeBrowser:
 class FakeChromium:
     def __init__(self, browser: FakeBrowser | None = None) -> None:
         self.browser = browser or FakeBrowser()
+        self.launch_modes: list[bool] = []
 
     async def launch(self, *, headless: bool) -> FakeBrowser:
-        assert headless is True
+        self.launch_modes.append(headless)
         return self.browser
 
 
@@ -186,6 +194,20 @@ class FakePlaywrightManager:
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
+
+
+@pytest.mark.asyncio
+async def test_visible_browser_mode_is_forwarded_to_playwright(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.crawler as crawler
+
+    playwright_manager = FakePlaywrightManager()
+    monkeypatch.setattr(crawler, "async_playwright", lambda: playwright_manager)
+
+    await crawler.crawl_categories({}, 1, set(), set(), headless=False)
+
+    assert playwright_manager.playwright.chromium.launch_modes == [False]
 
 
 @pytest.mark.asyncio

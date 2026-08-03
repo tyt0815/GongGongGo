@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 import logging
 from pathlib import Path
@@ -117,6 +118,25 @@ def test_missing_post_actions_return_not_found(client) -> None:
     assert client.post(
         "/api/posts/delete", json={"link": "https://example.test/missing"}
     ).status_code == 404
+
+
+def test_manual_crawl_starts_on_the_application_event_loop(client, app_parts) -> None:
+    _, _, managers = app_parts
+    original_start = managers[0].start
+
+    def loop_checking_start(
+        trigger: str, categories: tuple[str, ...] | None = None
+    ) -> bool:
+        if trigger == "manual":
+            asyncio.get_running_loop()
+        return original_start(trigger, categories)
+
+    managers[0].start = loop_checking_start
+
+    response = client.post("/api/crawl/start")
+
+    assert response.status_code == 200
+    assert response.json() == {"started": True}
 
 
 def test_duplicate_manual_crawl_returns_conflict(tmp_path: Path) -> None:
