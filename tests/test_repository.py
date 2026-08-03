@@ -171,6 +171,34 @@ def test_visible_posts_apply_target_and_role_filters(repository):
     ]
 
 
+def test_parse_failed_target_title_is_visible_as_a_raw_title_fallback(repository):
+    """Catches a parser failure hiding a configured target institution's post."""
+    repository.replace_keywords("institution", ["한국교육학술정보원"])
+    repository.replace_keywords("role", ["전산"])
+    repository.upsert_crawled_posts(
+        [
+            CrawledPost(
+                category="central",
+                title="[한국교육학술정보원 채용] 정규직 신입",
+                deadline_raw="2026.08.10",
+                link="https://example.test/raw-target",
+            ),
+            CrawledPost(
+                category="central",
+                title="경기도 공공기관 통합채용 사전공고",
+                deadline_raw="2026.08.10",
+                link="https://example.test/raw-general",
+            ),
+        ]
+    )
+
+    visible = repository.list_visible_posts()
+
+    assert [(row["link"], row["institution"], row["display_roles"]) for row in visible] == [
+        ("https://example.test/raw-target", "", ()),
+    ]
+
+
 def test_explicitly_empty_status_filter_returns_no_posts(repository, seeded_post):
     repository.replace_keywords("institution", ["Target"])
 

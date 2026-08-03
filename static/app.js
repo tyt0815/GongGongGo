@@ -7,10 +7,6 @@
     applied: "지원 완료",
     excluded: "제외",
   };
-  const groupStatuses = {
-    active: ["review_pending", "planned"],
-    archive: ["applied", "excluded"],
-  };
   const state = {
     posts: [],
     settings: null,
@@ -97,15 +93,16 @@
         meta.append(textElement("span", value, "badge"));
       });
       if (meta.childElementCount) card.append(meta);
-      if (post.original_title && post.original_title !== post.institution) {
-        card.append(textElement("p", post.original_title, "job-meta"));
-      }
     }
 
     if (post.display_roles && post.display_roles.length) {
       const roles = document.createElement("div");
       roles.className = "roles";
-      post.display_roles.forEach((role) => roles.append(textElement("span", role, "role")));
+      post.display_roles.forEach((role) => {
+        const roleElement = textElement("span", role, "role");
+        roleElement.title = role;
+        roles.append(roleElement);
+      });
       card.append(roles);
     }
 
@@ -133,7 +130,8 @@
       exclude.type = "button";
       exclude.addEventListener("click", () => excludePost(post));
       actions.append(exclude);
-    } else {
+    }
+    if (post.status === "excluded" || post.deadline_kind !== "dated") {
       const remove = textElement("button", "영구 삭제");
       remove.type = "button";
       remove.addEventListener("click", () => deletePost(post));
@@ -237,7 +235,9 @@
     if (snapshot.running) {
       crawlStatus.textContent = `수집 중: ${snapshot.completed_categories}/${snapshot.total_categories} 카테고리 · 신규 ${snapshot.new_count}건`;
     } else {
-      crawlStatus.textContent = "수집 대기 중";
+      crawlStatus.textContent = snapshot.total_categories
+        ? `최근 수집: ${snapshot.completed_categories}/${snapshot.total_categories} 카테고리 · 신규 ${snapshot.new_count}건`
+        : "아직 수집 결과가 없습니다.";
     }
     crawlButton.disabled = snapshot.running;
     crawlErrors.textContent = Object.entries(snapshot.category_errors || {}).map(([category, error]) => `${category}: ${error}`).join(" · ");
@@ -268,8 +268,9 @@
   async function startCrawl() {
     try {
       await request("/api/crawl/start", { method: "POST" });
-      await checkCrawlStatus();
-      startPolling();
+      const snapshot = await checkCrawlStatus();
+      if (snapshot.running) startPolling();
+      if (!snapshot.running) await refreshPosts();
     } catch (error) { showError(error.message); }
   }
 
@@ -390,9 +391,9 @@
   async function initialize() {
     bindEvents();
     try {
-      await refreshPosts();
       const snapshot = await checkCrawlStatus();
-      if (snapshot && snapshot.running) startPolling();
+      if (snapshot.running) startPolling();
+      await refreshPosts();
     } catch (error) { showError(error.message); }
   }
 

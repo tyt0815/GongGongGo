@@ -87,13 +87,13 @@ def filter_roles(
 ) -> tuple[bool, tuple[str, ...]]:
     if parsed is None:
         return False, ()
-    institution_match = _contains_any(parsed.institution, institution_keywords)
-    matched = tuple(role for role in parsed.roles if _contains_any(role, role_keywords))
+    institution_match = contains_keyword(parsed.institution, institution_keywords)
+    matched = tuple(role for role in parsed.roles if contains_keyword(role, role_keywords))
     if institution_match:
         return True, matched or parsed.roles
     return bool(matched), matched
 
 
-def _contains_any(value: str, keywords: tuple[str, ...]) -> bool:
+def contains_keyword(value: str, keywords: tuple[str, ...]) -> bool:
     normalized = value.casefold()
     return any(keyword.casefold() in normalized for keyword in keywords if keyword)

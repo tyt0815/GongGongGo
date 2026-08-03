@@ -19,7 +19,7 @@ from src.domain import (
     PostStatus,
     Settings,
 )
-from src.parsing import filter_roles, parse_deadline, parse_title
+from src.parsing import contains_keyword, filter_roles, parse_deadline, parse_title
 
 
 KeywordKind = Literal["institution", "role"]
@@ -82,6 +82,8 @@ class Repository:
             should_show, roles = filter_roles(
                 parsed, institution_keywords, role_keywords
             )
+            if not parsed.institution and not parsed.roles:
+                should_show = contains_keyword(row["original_title"], institution_keywords)
             if should_show:
                 visible.append(
                     {

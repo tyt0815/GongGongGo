@@ -91,3 +91,49 @@ def test_post_api_exposes_structured_fields_and_preserves_original_title(
     assert structured["institution"] == "한국교육학술정보원"
     assert structured["display_roles"] == ["전산"]
     assert structured["original_title"] == "[한국교육학술정보원 채용] 정규직 신입 (전산/행정)"
+
+
+def test_post_api_exposes_parse_failed_target_as_a_fallback_card(client, dashboard_parts) -> None:
+    """Catches the API dropping an unstructured target post before the UI can fall back."""
+    _, db_path = dashboard_parts
+    Repository(db_path).upsert_crawled_posts(
+        [
+            CrawledPost(
+                category="중앙공기업",
+                title="[한국교육학술정보원 채용] 정규직 신입",
+                deadline_raw="채용시마감",
+                link="https://example.test/raw-target",
+            )
+        ]
+    )
+
+    posts = client.get("/api/posts").json()["posts"]
+
+    assert len(posts) == 1
+    assert {
+        key: posts[0][key]
+        for key in (
+            "link", "original_title", "institution", "display_roles", "deadline_kind", "status"
+        )
+    } == {
+        "link": "https://example.test/raw-target",
+        "original_title": "[한국교육학술정보원 채용] 정규직 신입",
+        "institution": "",
+        "display_roles": [],
+        "deadline_kind": "open",
+        "status": "review_pending",
+    }
+
+
+def test_client_card_contract_handles_fallback_deletion_and_completed_crawls() -> None:
+    """Catches regressions in card actions and fast-crawl refresh coordination."""
+    script = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'post.status === "excluded" || post.deadline_kind !== "dated"' in script
+    assert "deletePost(post)" in script
+    assert 'link.textContent = post.institution || post.original_title' in script
+    assert 'card.append(textElement("p", post.original_title, "job-meta"))' not in script
+    assert 'roleElement.title = role' in script
+    assert "최근 수집:" in script
+    assert "if (snapshot.running) startPolling();" in script
+    assert "if (!snapshot.running) await refreshPosts();" in script
