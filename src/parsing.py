@@ -56,7 +56,7 @@ def parse_deadline(raw: str, today: date) -> ParsedDeadline:
 
 
 def _parse_dated_deadline(raw: str, today: date) -> date | None:
-    full_match = re.fullmatch(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", raw)
+    full_match = re.fullmatch(r"(\d{4})\.(\d{2})\.(\d{2})", raw)
     if full_match:
         year, month, day = (int(value) for value in full_match.groups())
         return _valid_date(year, month, day)

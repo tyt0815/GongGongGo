@@ -35,11 +35,23 @@ def test_parse_deadline_classifies_date_open_and_unknown():
     assert parse_deadline("7.24/7.31", date(2026, 8, 3)).kind is DeadlineKind.UNKNOWN
 
 
-@pytest.mark.parametrize("raw", ["", "채용시까지"])
-def test_parse_deadline_preserves_original_text_for_non_dated_values(raw):
+@pytest.mark.parametrize(
+    ("raw", "kind"),
+    [("", DeadlineKind.UNKNOWN), ("채용시까지", DeadlineKind.OPEN)],
+)
+def test_parse_deadline_preserves_original_text_for_non_dated_values(raw, kind):
     parsed = parse_deadline(raw, date(2026, 8, 3))
 
     assert parsed.raw == raw
+    assert parsed.kind is kind
+    assert parsed.value is None
+
+
+@pytest.mark.parametrize("raw", ["2026.8.3", "2026.08.3"])
+def test_parse_deadline_rejects_non_strict_full_dates(raw):
+    parsed = parse_deadline(raw, date(2026, 8, 3))
+
+    assert parsed.kind is DeadlineKind.UNKNOWN
     assert parsed.value is None
 
 
