@@ -39,6 +39,8 @@ def is_target_post(title):
     # 키워드 포함 여부 확인 함수
     contains_inst = any(k.lower() in title_lower for k in institutions)
     contains_tech = any(k.lower() in title_lower for k in tech_roles)
+
+    return contains_inst or contains_tech
     
     has_intern = '인턴' in title_lower
     has_newcomer = '신입' in title_lower
