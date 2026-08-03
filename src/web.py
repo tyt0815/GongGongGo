@@ -83,7 +83,10 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        posts = _repository(request).list_visible_posts()
+        try:
+            posts = _repository(request).list_visible_posts()
+        except (sqlite3.Error, RuntimeError) as exc:
+            raise _database_unavailable(exc) from exc
         return templates.TemplateResponse(
             request=request,
             name="index.html",
@@ -125,7 +128,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="A crawl is already running")
         return {"started": True}
 
-    @app.post("/api/crawl/retry/{category}")
+    @app.post("/api/crawl/retry/{category:path}")
     def retry_failed_category(request: Request, category: str) -> dict[str, object]:
         if category not in _manager(request).snapshot().category_errors:
             raise HTTPException(status_code=422, detail="Category is not eligible for retry")

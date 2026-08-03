@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -192,6 +193,29 @@ def test_retry_only_accepts_a_failed_category(client, app_parts) -> None:
 
     assert response.status_code == 200
     assert managers[0].starts[-1] == ("retry", ("중앙공기업",))
+
+
+def test_retry_accepts_failed_category_with_slash_in_its_name(client, app_parts) -> None:
+    _, _, managers = app_parts
+    managers[0]._errors = {"인턴/계약직": "timeout"}
+
+    response = client.post("/api/crawl/retry/인턴/계약직")
+
+    assert response.status_code == 200
+    assert managers[0].starts[-1] == ("retry", ("인턴/계약직",))
+
+
+@pytest.mark.parametrize("error", [sqlite3.OperationalError("locked"), RuntimeError("closed")])
+def test_home_maps_repository_errors_to_service_unavailable(client, monkeypatch, error) -> None:
+    def raise_error():
+        raise error
+
+    monkeypatch.setattr(client.app.state.repository, "list_visible_posts", raise_error)
+
+    response = client.get("/")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Database is temporarily unavailable"}
 
 
 def test_home_escapes_korean_title_with_quotes(client, repository: Repository) -> None:
