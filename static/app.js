@@ -269,8 +269,9 @@
     try {
       await request("/api/crawl/start", { method: "POST" });
       const snapshot = await checkCrawlStatus();
-      if (snapshot?.running) startPolling();
-      if (!snapshot?.running) await refreshPosts();
+      crawlButton.disabled = true;
+      if (snapshot?.running !== false) startPolling();
+      if (snapshot?.running === false) await refreshPosts();
     } catch (error) { showError(error.message); }
   }
 

@@ -136,7 +136,7 @@ def test_client_card_contract_handles_fallback_deletion_and_completed_crawls() -
     assert 'roleElement.title = role' in script
     assert "최근 수집:" in script
     assert "if (snapshot?.running) startPolling();" in script
-    assert "if (!snapshot?.running) await refreshPosts();" in script
+    assert "if (snapshot?.running === false) await refreshPosts();" in script
 
 
 def test_client_status_failure_contract_keeps_initial_posts_load_safe() -> None:
@@ -147,7 +147,20 @@ def test_client_status_failure_contract_keeps_initial_posts_load_safe() -> None:
     )[0]
     initialize = script.split("async function initialize()", 1)[1]
 
-    assert "if (snapshot?.running) startPolling();" in start_crawl
-    assert "if (!snapshot?.running) await refreshPosts();" in start_crawl
+    assert "if (snapshot?.running !== false) startPolling();" in start_crawl
+    assert "if (snapshot?.running === false) await refreshPosts();" in start_crawl
     assert "if (snapshot?.running) startPolling();" in initialize
     assert "await refreshPosts();" in initialize
+
+
+def test_manual_crawl_contract_tracks_an_accepted_run_after_null_status() -> None:
+    """Catches an accepted manual crawl losing its completion refresh after a status outage."""
+    script = (Path(__file__).parents[1] / "static" / "app.js").read_text(encoding="utf-8")
+    start_crawl = script.split("async function startCrawl()", 1)[1].split(
+        "function renderKeywords", 1
+    )[0]
+
+    assert 'await request("/api/crawl/start", { method: "POST" });' in start_crawl
+    assert "crawlButton.disabled = true;" in start_crawl
+    assert "if (snapshot?.running !== false) startPolling();" in start_crawl
+    assert "if (snapshot?.running === false) await refreshPosts();" in start_crawl
