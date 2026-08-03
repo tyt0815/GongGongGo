@@ -1,5 +1,6 @@
 import asyncio
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -69,11 +70,19 @@ async def test_category_collects_rows_and_stops_at_known_link(fake_page: FakePag
 
 @pytest.mark.asyncio
 async def test_tilde_deadline_from_crawler_is_stored_as_dated(
-    fake_page: FakePage, tmp_path: Path
+    fake_page: FakePage, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from src.crawler import crawl_category
     from src.database import connect, initialize_database
+    import src.repository as repository_module
     from src.repository import Repository
+
+    class FrozenRepositoryDate:
+        @classmethod
+        def today(cls) -> date:
+            return date(2026, 8, 3)
+
+    monkeypatch.setattr(repository_module, "date", FrozenRepositoryDate)
 
     fake_page.add_page(
         1,
