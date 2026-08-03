@@ -338,9 +338,10 @@
 
   function openSettings() {
     const drawer = byId("settings-drawer");
-    drawer.hidden = false;
-    byId("settings-button").setAttribute("aria-expanded", "true");
-    Promise.all([refreshSettings(), refreshDeletedLinks()]).catch((error) => showError(error.message));
+    Promise.all([refreshSettings(), refreshDeletedLinks()]).then(() => {
+      drawer.hidden = false;
+      byId("settings-button").setAttribute("aria-expanded", "true");
+    }).catch((error) => showError(error.message));
   }
 
   function closeSettings() {

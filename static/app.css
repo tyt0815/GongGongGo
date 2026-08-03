@@ -24,13 +24,15 @@ h3 { margin: 0; font-size: 1rem; }
 .group-tabs, .status-tabs { gap: 6px; margin-bottom: 18px; }
 .group-tabs button.selected, .status-tabs button.selected { background: #172033; color: #fff; border-color: #172033; }
 .wide-view, .group-tabs { display: none; }
+.wide-view[hidden] { display: none; }
 .lane, .status-panel { min-width: 0; }
-.card-list { display: grid; gap: 12px; }
+.card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .job-card { display: grid; gap: 10px; padding: 16px; border: 1px solid #d9e0ea; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgb(15 23 42 / 4%); }
 .job-card a { color: #1d4ed8; font-weight: 800; text-decoration: none; }
 .job-card a:hover { text-decoration: underline; }
 .job-meta, .roles, .deadline { color: #526174; font-size: .9rem; }
 .badges, .roles { display: flex; flex-wrap: wrap; gap: 6px; }
+.roles { min-width: 0; }
 .badge, .role { border-radius: 999px; padding: 3px 8px; background: #eef2ff; color: #3730a3; font-size: .8rem; }
 .role { background: #f1f5f9; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .deadline { font-weight: 700; }
