@@ -81,7 +81,7 @@ def seeded_post(repository: Repository) -> CrawledPost:
     post = CrawledPost(
         category="중앙공기업",
         title="[한국교육학술정보원 채용] 정규직 신입 (전산)",
-        deadline_raw="2026.08.10",
+        deadline_raw="2099.08.10",
         link="https://example.test/jobs/1",
     )
     repository.upsert_crawled_posts([post])
@@ -316,7 +316,7 @@ def test_home_escapes_korean_title_with_quotes(client, repository: Repository) -
             CrawledPost(
                 category="중앙공기업",
                 title=title,
-                deadline_raw="2026.08.10",
+                deadline_raw="2099.08.10",
                 link="https://example.test/quoted",
             )
         ]

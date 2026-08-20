@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ def make_post(link: str) -> CrawledPost:
     return CrawledPost(
         category="central",
         title="[Agency] full-time (software)",
-        deadline_raw="2026.08.10",
+        deadline_raw="2099.08.10",
         link=link,
     )
 
@@ -228,7 +229,10 @@ async def test_manager_passes_existing_and_deleted_links_to_crawler(
     manager, repository: Repository, fake_crawler: FakeCrawler
 ) -> None:
     known = make_post("https://example.test/known")
-    deleted = make_post("https://example.test/deleted")
+    deleted = replace(
+        make_post("https://example.test/deleted"),
+        title="[Deleted Agency] full-time (software)",
+    )
     repository.upsert_crawled_posts([known, deleted])
     assert repository.delete_permanently(deleted.link) is True
 

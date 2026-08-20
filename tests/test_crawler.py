@@ -1,7 +1,9 @@
 import asyncio
+from itertools import count
 import re
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +27,7 @@ class FakePage:
     def __init__(self) -> None:
         self._pages: dict[int, list[tuple[str, str] | Exception]] = {}
         self._page_number = 0
+        self.visited_pages: list[int] = []
 
     def add_page(self, page_number: int, rows: list[tuple[str, str] | Exception]) -> None:
         self._pages[page_number] = rows
@@ -32,6 +35,7 @@ class FakePage:
     async def goto(self, url: str, *, wait_until: str) -> None:
         assert wait_until == "networkidle"
         self._page_number = int(re.search(r"[?&]page=(\d+)", url).group(1))
+        self.visited_pages.append(self._page_number)
 
     async def query_selector(self, selector: str) -> FakeElement | None:
         row_number = int(re.search(r"tr:nth-child\((\d+)\)", selector).group(1))
@@ -69,7 +73,10 @@ async def test_category_collects_rows_and_stops_at_known_link(
     assert "Category crawl started: category=중앙공기업" in caplog.text
     assert "Page load started: category=중앙공기업 page=1" in caplog.text
     assert "Page load completed: category=중앙공기업 page=1" in caplog.text
-    assert "Known post reached: category=중앙공기업 page=1 collected=1" in caplog.text
+    assert (
+        "Known post reached: category=중앙공기업 page=1 "
+        "link=https://example/known collected=1"
+    ) in caplog.text
     assert [post.link for post in result.posts] == ["https://example/new"]
     assert result.posts[0].title == "[A 채용] 정규직 신입 (전산)"
     assert result.posts[0].deadline_raw == "~8.10"
@@ -110,6 +117,34 @@ async def test_tilde_deadline_from_crawler_is_stored_as_dated(
             "SELECT deadline_raw, deadline_kind, deadline_date FROM job_posts"
         ).fetchone()
     assert tuple(row) == ("~8.10", "dated", "2026-08-10")
+
+
+@pytest.mark.asyncio
+async def test_category_stops_after_the_first_empty_page(
+    fake_page: FakePage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import src.crawler as crawler
+
+    ticks = count()
+    monkeypatch.setattr(
+        crawler, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(crawler, "asyncio", SimpleNamespace(sleep=no_sleep))
+    fake_page.add_page(
+        1,
+        [("[A 채용] 정규직 신입 (전산) (~8.10)", "https://example/new")],
+    )
+
+    result = await crawler.crawl_category(
+        fake_page, "중앙공기업", "https://example/menu", set(), set()
+    )
+
+    assert [post.link for post in result.posts] == ["https://example/new"]
+    assert fake_page.visited_pages == [1, 2]
 
 
 @pytest.mark.asyncio

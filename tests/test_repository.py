@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 import sqlite3
 
@@ -12,7 +13,13 @@ from src.domain import (
     PostStatus,
     Settings,
 )
+import src.repository as repository_module
 from src.repository import Repository
+
+
+@pytest.fixture(autouse=True)
+def fixed_today(monkeypatch):
+    monkeypatch.setattr(repository_module, "_today", lambda: date(2026, 8, 3))
 
 
 @pytest.fixture
@@ -34,6 +41,66 @@ def seeded_post(repository: Repository) -> CrawledPost:
     )
     repository.upsert_crawled_posts([post])
     return post
+
+
+def test_upsert_skips_new_posts_with_a_past_dated_deadline(
+    repository, monkeypatch
+):
+    monkeypatch.setattr(repository_module, "_today", lambda: date(2026, 8, 3))
+    expired = CrawledPost(
+        category="central",
+        title="[Expired Agency] full-time (software)",
+        deadline_raw="2026.08.02",
+        link="https://example.test/expired",
+    )
+    due_today = replace(
+        expired,
+        title="[Due Today Agency] full-time (software)",
+        deadline_raw="2026.08.03",
+        link="https://example.test/due-today",
+    )
+    open_post = replace(
+        expired,
+        title="[Open Agency] full-time (software)",
+        deadline_raw="채용시마감",
+        link="https://example.test/open",
+    )
+    unknown = replace(
+        expired,
+        title="[Unknown Agency] full-time (software)",
+        deadline_raw="날짜 미정",
+        link="https://example.test/unknown",
+    )
+
+    assert repository.upsert_crawled_posts([expired, due_today, open_post, unknown]) == 3
+    assert repository.list_existing_links() == {
+        due_today.link,
+        open_post.link,
+        unknown.link,
+    }
+
+
+def test_upsert_removes_stored_posts_after_their_deadline(repository, monkeypatch):
+    monkeypatch.setattr(repository_module, "_today", lambda: date(2026, 8, 3))
+    dated = CrawledPost(
+        category="central",
+        title="[Dated Agency] full-time (software)",
+        deadline_raw="2026.08.10",
+        link="https://example.test/dated",
+    )
+    open_post = replace(
+        dated,
+        title="[Open Agency] full-time (software)",
+        deadline_raw="채용시마감",
+        link="https://example.test/open",
+    )
+    repository.upsert_crawled_posts([dated, open_post])
+
+    monkeypatch.setattr(repository_module, "_today", lambda: date(2026, 8, 11))
+    repository.upsert_crawled_posts([])
+
+    assert repository.list_existing_links() == {open_post.link}
+    assert repository.list_deleted_links() == ()
 
 
 def test_crawler_upsert_preserves_user_status(repository, seeded_post):

@@ -32,9 +32,10 @@ def _split_source_title_and_deadline(source_title: str) -> tuple[str, str]:
 
 
 async def _extract_row(element: Any, category: str) -> CrawledPost:
-    link = await element.get_attribute("href")
-    if not link:
+    raw_link = await element.get_attribute("href")
+    if not raw_link:
         raise ValueError("post link is missing")
+    link = raw_link.partition("?")[0]
 
     source_title = (await element.inner_text()).strip()
     if not source_title:
@@ -48,6 +49,7 @@ async def _extract_row(element: Any, category: str) -> CrawledPost:
         link=link,
     )
 
+
 async def crawl_category(
     page: Any,
     category: str,
@@ -57,12 +59,6 @@ async def crawl_category(
     early_stop: bool = True,
 ) -> CategoryResult:
     posts: list[CrawledPost] = []
-
-    # 쿼리 문자열을 제거한 링크 집합을 미리 생성
-    normalized_known_links = {
-        link.partition("?")[0]
-        for link in known_links
-    }
 
     logger.info("Category crawl started: category=%s", category)
 
@@ -91,16 +87,32 @@ async def crawl_category(
 
         # 첫 번째 공고가 나타날 때까지 최대 5초간 확인
         deadline = time.monotonic() + 5
+        element = None
+        first_row_available = False
 
         while time.monotonic() < deadline:
-            element = await page.query_selector(
-                _row_selector(1, page_number == 1)
-            )
+            try:
+                element = await page.query_selector(
+                    _row_selector(1, page_number == 1)
+                )
+            except Exception:
+                first_row_available = True
+                break
 
             if element is not None:
+                first_row_available = True
                 break
 
             await asyncio.sleep(0.1)
+
+        if not first_row_available:
+            logger.info(
+                "Empty page reached: category=%s page=%d collected=%d",
+                category,
+                page_number,
+                len(posts),
+            )
+            break
 
         for row_index in range(1, MAX_ROWS_PER_PAGE + 1):
             try:
@@ -136,15 +148,12 @@ async def crawl_category(
             if post.link in blocked_links:
                 continue
 
-            # 비교할 때만 ? 뒤의 쿼리 문자열을 제거
-            normalized_post_link = post.link.partition("?")[0]
-            
-            if early_stop and normalized_post_link in normalized_known_links:
+            if early_stop and post.link in known_links:
                 logger.info(
                     "Known post reached: category=%s page=%d link=%s collected=%d",
                     category,
                     page_number,
-                    normalized_post_link,
+                    post.link,
                     len(posts),
                 )
                 return CategoryResult(

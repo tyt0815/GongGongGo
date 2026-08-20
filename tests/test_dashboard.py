@@ -44,7 +44,7 @@ def seeded_posts(dashboard_parts) -> tuple[CrawledPost, CrawledPost]:
         CrawledPost(
             category="중앙공기업",
             title="[한국교육학술정보원 채용] 정규직 신입 (전산/행정)",
-            deadline_raw="2026.08.10",
+            deadline_raw="2099.08.10",
             link="https://example.test/structured",
         ),
         CrawledPost(
@@ -67,7 +67,7 @@ def test_dashboard_serves_external_assets_and_operational_controls(client) -> No
     assert 'data-view-group="active"' in html
     assert 'data-view-group="archive"' in html
     assert 'id="settings-drawer"' in html
-    assert 'id="crawl-button"' in html
+    assert '<button id="crawl-button" class="primary-button" type="button" disabled>' in html
     assert 'id="crawl-status"' in html
     assert "검토 대기" in html
     assert "지원 예정" in html

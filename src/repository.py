@@ -118,13 +118,33 @@ class Repository:
 
     def upsert_crawled_posts(self, posts: list[CrawledPost]) -> int:
         new_count = 0
+        today = _today()
         with self._connection() as connection, connection:
+            connection.execute(
+                "DELETE FROM job_posts "
+                "WHERE deadline_kind = 'dated' AND deadline_date < ?",
+                (today.isoformat(),),
+            )
             for post in posts:
+                normalized_link = post.link.partition("?")[0]
                 existed = connection.execute(
-                    "SELECT 1 FROM job_posts WHERE link = ?", (post.link,)
+                    "SELECT 1 FROM job_posts WHERE link = ?", (normalized_link,)
                 ).fetchone()
                 parsed_title = parse_title(post.title)
-                parsed_deadline = parse_deadline(post.deadline_raw, date.today())
+                parsed_deadline = parse_deadline(post.deadline_raw, today)
+                if parsed_deadline.value is not None and parsed_deadline.value < today:
+                    connection.execute(
+                        "DELETE FROM job_posts WHERE link = ?", (normalized_link,)
+                    )
+                    continue
+                if parsed_title is not None and _parsed_identity_exists(
+                    connection,
+                    normalized_link,
+                    parsed_title,
+                    parsed_deadline,
+                ):
+                    continue
+
                 now = _now()
                 connection.execute(
                     """
@@ -149,7 +169,13 @@ class Repository:
                         deadline_kind = excluded.deadline_kind,
                         last_seen_at = excluded.last_seen_at
                     """,
-                    _crawled_values(post, parsed_title, parsed_deadline, now),
+                    _crawled_values(
+                        post,
+                        normalized_link,
+                        parsed_title,
+                        parsed_deadline,
+                        now,
+                    ),
                 )
                 if existed is None and connection.execute("SELECT changes()").fetchone()[0]:
                     new_count += 1
@@ -288,13 +314,14 @@ class Repository:
 
 def _crawled_values(
     post: CrawledPost,
+    normalized_link: str,
     parsed_title: ParsedTitle | None,
     parsed_deadline: ParsedDeadline,
     now: str,
 ) -> tuple[object, ...]:
     title = parsed_title or ParsedTitle(extract_institution(post.title), "", "", ())
     return (
-        post.link,
+        normalized_link,
         post.category,
         post.title,
         title.institution,
@@ -307,8 +334,40 @@ def _crawled_values(
         now,
         now,
         now,
-        post.link,
+        normalized_link,
     )
+
+
+def _parsed_identity_exists(
+    connection: sqlite3.Connection,
+    link: str,
+    parsed_title: ParsedTitle,
+    parsed_deadline: ParsedDeadline,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM job_posts
+        WHERE link <> ?
+          AND institution = ?
+          AND employment = ?
+          AND roles_json = ?
+          AND deadline_kind = ?
+          AND COALESCE(deadline_date, '') = COALESCE(?, '')
+          AND (deadline_kind <> 'unknown' OR deadline_raw = ?)
+        LIMIT 1
+        """,
+        (
+            link,
+            parsed_title.institution,
+            parsed_title.employment,
+            json.dumps(parsed_title.roles, ensure_ascii=False),
+            parsed_deadline.kind.value,
+            parsed_deadline.value.isoformat() if parsed_deadline.value else None,
+            parsed_deadline.raw,
+        ),
+    ).fetchone()
+    return row is not None
 
 
 def _normalize_keywords(values: list[str]) -> tuple[str, ...]:
@@ -338,6 +397,10 @@ def _replace_keyword_rows(
 def _validate_keyword_kind(kind: str) -> None:
     if kind not in ("institution", "role"):
         raise ValueError("Unknown keyword kind")
+
+
+def _today() -> date:
+    return date.today()
 
 
 def _now() -> str:

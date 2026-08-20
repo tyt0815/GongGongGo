@@ -79,6 +79,17 @@ def initialize_database(db_path: Path, json_path: Path) -> None:
                 status_updated_at TEXT NOT NULL
             );
 
+            CREATE UNIQUE INDEX IF NOT EXISTS job_posts_parsed_identity_unique
+            ON job_posts(
+                institution,
+                employment,
+                roles_json,
+                deadline_kind,
+                COALESCE(deadline_date, ''),
+                CASE WHEN deadline_kind = 'unknown' THEN deadline_raw ELSE '' END
+            )
+            WHERE institution <> '' AND roles_json <> '[]';
+
             CREATE TABLE IF NOT EXISTS crawl_runs (
                 id INTEGER PRIMARY KEY,
                 trigger TEXT NOT NULL,
@@ -169,7 +180,7 @@ def _migrate_json_once(db_path: Path, json_path: Path) -> None:
                         roles_json, deadline_raw, deadline_date, deadline_kind, status,
                         discovered_at, last_seen_at, status_updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(link) DO NOTHING
+                    ON CONFLICT DO NOTHING
                     """,
                     values,
                 )
@@ -209,8 +220,9 @@ def _migration_values(legacy_post: object, now: str) -> tuple[object, ...] | Non
     status = _LEGACY_STATUS_MAP.get(
         legacy_post.get("state"), PostStatus.REVIEW_PENDING.value
     )
+    normalized_link = link.partition("?")[0]
     return (
-        link,
+        normalized_link,
         category,
         title,
         institution,
