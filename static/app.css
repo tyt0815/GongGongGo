@@ -30,8 +30,10 @@ h3 { margin: 0; font-size: 1rem; }
 .lane, .status-panel { min-width: 0; }
 .card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .job-card { display: grid; gap: 10px; padding: 16px; border: 1px solid #d9e0ea; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgb(15 23 42 / 4%); }
+.job-card h3 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .job-card a { color: #1d4ed8; font-weight: 800; text-decoration: none; }
 .job-card a:hover { text-decoration: underline; }
+.new-badge { flex: none; border-radius: 999px; padding: 2px 7px; background: #dc2626; color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .04em; }
 .job-meta, .roles, .deadline { color: #526174; font-size: .9rem; }
 .badges, .roles { display: flex; flex-wrap: wrap; gap: 6px; }
 .roles { min-width: 0; }

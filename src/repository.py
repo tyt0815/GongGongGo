@@ -66,7 +66,11 @@ class Repository:
             placeholders = ", ".join("?" for _ in statuses)
             query += f" WHERE status IN ({placeholders})"
             parameters = tuple(status.value for status in statuses)
-        query += " ORDER BY id"
+        query += (
+            " ORDER BY "
+            "CASE WHEN status = 'review_pending' AND is_new = 1 THEN 0 ELSE 1 END, "
+            "CASE WHEN status = 'review_pending' AND is_new = 1 THEN id END DESC, id"
+        )
 
         with self._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
@@ -101,6 +105,7 @@ class Repository:
                         "deadline_date": row["deadline_date"],
                         "deadline_kind": DeadlineKind(row["deadline_kind"]),
                         "status": PostStatus(row["status"]),
+                        "is_new": bool(row["is_new"]),
                         "discovered_at": row["discovered_at"],
                         "last_seen_at": row["last_seen_at"],
                         "status_updated_at": row["status_updated_at"],
@@ -111,8 +116,16 @@ class Repository:
     def update_status(self, link: str, status: PostStatus) -> bool:
         with self._connection() as connection, connection:
             result = connection.execute(
-                "UPDATE job_posts SET status = ?, status_updated_at = ? WHERE link = ?",
+                "UPDATE job_posts SET status = ?, is_new = 0, status_updated_at = ? "
+                "WHERE link = ?",
                 (status.value, _now(), link),
+            )
+            return result.rowcount == 1
+
+    def acknowledge_post(self, link: str) -> bool:
+        with self._connection() as connection, connection:
+            result = connection.execute(
+                "UPDATE job_posts SET is_new = 0 WHERE link = ?", (link,)
             )
             return result.rowcount == 1
 
@@ -151,9 +164,9 @@ class Repository:
                     INSERT INTO job_posts(
                         link, category, original_title, institution, employment, career,
                         roles_json, deadline_raw, deadline_date, deadline_kind, status,
-                        discovered_at, last_seen_at, status_updated_at
+                        is_new, discovered_at, last_seen_at, status_updated_at
                     )
-                    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'review_pending', ?, ?, ?
+                    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'review_pending', 1, ?, ?, ?
                     WHERE NOT EXISTS(
                         SELECT 1 FROM deleted_links WHERE link = ?
                     )

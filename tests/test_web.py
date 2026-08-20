@@ -104,10 +104,44 @@ def test_status_update_uses_validated_enum(client, seeded_post: CrawledPost) -> 
 
     assert response.status_code == 200
     assert response.json()["status"] == "planned"
+    moved = next(
+        post
+        for post in client.get("/api/posts").json()["posts"]
+        if post["link"] == seeded_post.link
+    )
+    assert moved["is_new"] is False
     assert client.post(
         "/api/posts/status",
         json={"link": seeded_post.link, "status": "not-a-status"},
     ).status_code == 422
+
+
+def test_acknowledge_post_clears_new_without_moving_status(
+    client, seeded_post: CrawledPost
+) -> None:
+    before = next(
+        post
+        for post in client.get("/api/posts").json()["posts"]
+        if post["link"] == seeded_post.link
+    )
+    assert before["is_new"] is True
+
+    response = client.post(
+        "/api/posts/acknowledge", json={"link": seeded_post.link}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"acknowledged": True}
+    after = next(
+        post
+        for post in client.get("/api/posts").json()["posts"]
+        if post["link"] == seeded_post.link
+    )
+    assert after["status"] == "review_pending"
+    assert after["is_new"] is False
+    assert client.post(
+        "/api/posts/acknowledge", json={"link": "https://example.test/missing"}
+    ).status_code == 404
 
 
 def test_missing_post_actions_return_not_found(client) -> None:

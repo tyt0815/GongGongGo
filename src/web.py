@@ -110,6 +110,15 @@ def create_app(
         except sqlite3.Error as exc:
             raise _database_unavailable(exc) from exc
 
+    @app.post("/api/posts/acknowledge")
+    def acknowledge_post(request: Request, data: LinkRequest) -> dict[str, bool]:
+        try:
+            if not _repository(request).acknowledge_post(data.link):
+                raise HTTPException(status_code=404, detail="Post not found")
+            return {"acknowledged": True}
+        except sqlite3.Error as exc:
+            raise _database_unavailable(exc) from exc
+
     @app.post("/api/posts/delete")
     def delete_post(request: Request, data: LinkRequest) -> dict[str, bool]:
         repository = _repository(request)

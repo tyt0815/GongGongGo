@@ -62,16 +62,17 @@ def test_migration_imports_only_strict_dates_maps_status_and_preserves_source(
 
     with connect(db_path) as connection:
         rows = connection.execute(
-            "SELECT link, status, deadline_date, deadline_kind FROM job_posts ORDER BY id"
+            "SELECT link, status, deadline_date, deadline_kind, is_new "
+            "FROM job_posts ORDER BY id"
         ).fetchall()
         migration = connection.execute(
             "SELECT value FROM app_meta WHERE key = 'json_migration_v1'"
         ).fetchone()
 
     assert [tuple(row) for row in rows] == [
-        ("https://example/a", "review_pending", "2026-08-10", "dated"),
-        ("https://example/planned", "planned", "2026-08-11", "dated"),
-        ("https://example/applied", "applied", "2026-08-12", "dated"),
+        ("https://example/a", "review_pending", "2026-08-10", "dated", 0),
+        ("https://example/planned", "planned", "2026-08-11", "dated", 0),
+        ("https://example/applied", "applied", "2026-08-12", "dated", 0),
     ]
     assert migration["value"] == "complete"
     assert source.read_text(encoding="utf-8") == source_before
@@ -221,3 +222,50 @@ def test_schema_enforces_status_deadline_concurrency_and_keyword_constraints(tmp
                 )
                 """
             )
+
+
+def test_existing_job_posts_schema_adds_non_new_flag_on_upgrade(tmp_path: Path):
+    db_path = tmp_path / "gonggonggo.db"
+    source = tmp_path / "job_posts.json"
+    source.write_text("[]", encoding="utf-8")
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE job_posts (
+                id INTEGER PRIMARY KEY,
+                link TEXT NOT NULL UNIQUE,
+                category TEXT NOT NULL,
+                original_title TEXT NOT NULL,
+                institution TEXT NOT NULL,
+                employment TEXT NOT NULL,
+                career TEXT NOT NULL,
+                roles_json TEXT NOT NULL,
+                deadline_raw TEXT NOT NULL,
+                deadline_date TEXT,
+                deadline_kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                discovered_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                status_updated_at TEXT NOT NULL
+            );
+            INSERT INTO job_posts VALUES (
+                1, 'https://example/old', 'central', '[Old] full-time (software)',
+                'Old', 'full-time', '', '["software"]', '2099.08.10',
+                '2099-08-10', 'dated', 'review_pending',
+                '2026-08-03T00:00:00+00:00', '2026-08-03T00:00:00+00:00',
+                '2026-08-03T00:00:00+00:00'
+            );
+            """
+        )
+
+    initialize_database(db_path, source)
+
+    with connect(db_path) as connection:
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
+        }
+        row = connection.execute(
+            "SELECT is_new FROM job_posts WHERE link = 'https://example/old'"
+        ).fetchone()
+    assert "is_new" in columns
+    assert row["is_new"] == 0

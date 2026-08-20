@@ -16,6 +16,7 @@
     activeStatus: "review_pending",
     pollTimer: null,
     undoTimer: null,
+    postsMutationVersion: 0,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -86,6 +87,9 @@
       ? (post.institution || post.original_title)
       : post.original_title;
     title.append(link);
+    if (post.status === "review_pending" && post.is_new) {
+      title.append(textElement("span", "NEW", "new-badge"));
+    }
     card.append(title);
 
     if (post.institution) {
@@ -119,6 +123,12 @@
     const actions = document.createElement("div");
     actions.className = "card-actions";
     if (post.status === "review_pending") {
+      if (post.is_new) {
+        const acknowledge = textElement("button", "확인");
+        acknowledge.type = "button";
+        acknowledge.addEventListener("click", () => acknowledgePost(post));
+        actions.append(acknowledge);
+      }
       actions.append(createStatusButton(post, "planned"), createStatusButton(post, "applied"));
     } else if (post.status === "planned") {
       actions.append(createStatusButton(post, "applied"), createStatusButton(post, "review_pending"));
@@ -152,6 +162,10 @@
         .filter(Boolean).join(" ").toLocaleLowerCase();
       return (!query || searchText.includes(query)) && (!category || post.category === category);
     }).sort((first, second) => {
+      const firstIsNew = first.status === "review_pending" && first.is_new;
+      const secondIsNew = second.status === "review_pending" && second.is_new;
+      if (firstIsNew !== secondIsNew) return firstIsNew ? -1 : 1;
+      if (firstIsNew && secondIsNew) return Number(second.id) - Number(first.id);
       if (sort === "recent") return String(second.last_seen_at).localeCompare(String(first.last_seen_at));
       return String(first.deadline_date || "9999-12-31").localeCompare(String(second.deadline_date || "9999-12-31"));
     });
@@ -185,7 +199,9 @@
   }
 
   async function refreshPosts() {
+    const mutationVersion = state.postsMutationVersion;
     const payload = await request("/api/posts");
+    if (mutationVersion !== state.postsMutationVersion) return refreshPosts();
     state.posts = payload.posts;
     populateCategories();
     renderPosts();
@@ -197,7 +213,21 @@
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ link: post.link, status }),
       });
+      state.postsMutationVersion += 1;
       post.status = status;
+      post.is_new = false;
+      renderPosts();
+    } catch (error) { showError(error.message); }
+  }
+
+  async function acknowledgePost(post) {
+    try {
+      await request("/api/posts/acknowledge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: post.link }),
+      });
+      state.postsMutationVersion += 1;
+      post.is_new = false;
       renderPosts();
     } catch (error) { showError(error.message); }
   }
@@ -227,6 +257,7 @@
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ link: post.link }),
       });
+      state.postsMutationVersion += 1;
       state.posts = state.posts.filter((item) => item.link !== post.link);
       renderPosts();
       await refreshDeletedLinks();

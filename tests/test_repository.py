@@ -126,6 +126,51 @@ def test_crawler_upsert_preserves_user_status(repository, seeded_post):
     assert tuple(after) == tuple(before)
 
 
+def test_new_flag_is_created_preserved_and_acknowledged(repository, seeded_post):
+    repository.replace_keywords("role", ["software"])
+    assert repository.list_visible_posts()[0]["is_new"] is True
+
+    repository.upsert_crawled_posts(
+        [replace(seeded_post, title="[Target Agency] updated (software/data)")]
+    )
+    assert repository.list_visible_posts()[0]["is_new"] is True
+
+    assert repository.acknowledge_post(seeded_post.link) is True
+    assert repository.list_visible_posts()[0]["is_new"] is False
+    assert repository.acknowledge_post("https://example.test/missing") is False
+
+
+def test_review_pending_new_posts_are_listed_newest_first(repository):
+    repository.replace_keywords("role", ["software"])
+    old = CrawledPost(
+        category="central",
+        title="[Old Agency] full-time (software)",
+        deadline_raw="2099.08.10",
+        link="https://example.test/old",
+    )
+    newer = replace(
+        old,
+        title="[New Agency] full-time (software)",
+        link="https://example.test/new",
+    )
+    newest = replace(
+        old,
+        title="[Newest Agency] full-time (software)",
+        link="https://example.test/newest",
+    )
+    repository.upsert_crawled_posts([old])
+    repository.acknowledge_post(old.link)
+    repository.upsert_crawled_posts([newer, newest])
+
+    visible = repository.list_visible_posts()
+
+    assert [(row["link"], row["is_new"]) for row in visible] == [
+        (newest.link, True),
+        (newer.link, True),
+        (old.link, False),
+    ]
+
+
 def test_status_update_changes_no_crawler_owned_fields(repository, seeded_post):
     fields = (
         "category",
@@ -166,6 +211,11 @@ def test_status_update_changes_no_crawler_owned_fields(repository, seeded_post):
         ).fetchone()
     assert status_row["status"] == PostStatus.APPLIED.value
     assert status_row["status_updated_at"] != status_before["status_updated_at"]
+    with connect(repository.db_path) as connection:
+        is_new = connection.execute(
+            "SELECT is_new FROM job_posts WHERE link = ?", (seeded_post.link,)
+        ).fetchone()["is_new"]
+    assert is_new == 0
 
 
 def test_permanent_delete_blocks_recollection(repository, seeded_post):
@@ -261,8 +311,8 @@ def test_visible_posts_apply_target_and_role_filters(repository):
     visible = repository.list_visible_posts()
 
     assert [(row["link"], row["display_roles"]) for row in visible] == [
-        ("https://example.test/target", ("accounting",)),
         ("https://example.test/general-match", ("software",)),
+        ("https://example.test/target", ("accounting",)),
     ]
 
 

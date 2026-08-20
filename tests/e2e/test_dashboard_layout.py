@@ -15,7 +15,8 @@ import pytest
 import uvicorn
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from src.domain import CrawlSnapshot
+from src.domain import CrawledPost, CrawlSnapshot
+from src.repository import Repository
 from src.web import create_app
 
 
@@ -96,6 +97,9 @@ class LiveServer:
         self.base_url = ""
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
+        self.delay_posts_after_read = False
+        self.posts_read_started = threading.Event()
+        self.release_posts_read = threading.Event()
 
     def start(self) -> str:
         port = _free_port()
@@ -109,7 +113,15 @@ class LiveServer:
         async def delay_settings_read(request, call_next):
             if request.method == "GET" and request.url.path == "/api/settings":
                 await asyncio.sleep(0.25)
-            return await call_next(request)
+            response = await call_next(request)
+            if (
+                self.delay_posts_after_read
+                and request.method == "GET"
+                and request.url.path == "/api/posts"
+            ):
+                self.posts_read_started.set()
+                await asyncio.to_thread(self.release_posts_read.wait, 5)
+            return response
 
         self._server = uvicorn.Server(
             uvicorn.Config(
@@ -129,6 +141,7 @@ class LiveServer:
     def stop(self) -> None:
         if self._server is None or self._thread is None:
             return
+        self.release_posts_read.set()
         self._server.should_exit = True
         self._thread.join(timeout=10)
         if self._thread.is_alive():
@@ -252,6 +265,113 @@ def test_status_transition_and_exclusion_undo_during_blocked_crawl(
         planned_lane.get_by_role("link", name="일반연구원", exact=True)
     ).to_be_visible()
     expect(page.locator("#crawl-status")).to_contain_text("수집 중: 1/4")
+
+
+def test_new_posts_are_prioritized_and_clear_only_on_an_action(
+    browser: Browser, tmp_path: Path
+) -> None:
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    server = LiveServer(tmp_path / "gonggonggo.db", json_path)
+    page = browser.new_page(viewport={"width": 2560, "height": 1440})
+    try:
+        server.start()
+        repository = Repository(server.db_path)
+        repository.replace_keywords("institution", ["기관"])
+        repository.replace_keywords("role", [])
+        posts = [
+            CrawledPost(
+                category="중앙공기업",
+                title="[기존기관 채용] 정규직 신입 (전산)",
+                deadline_raw="2099.08.10",
+                link="https://example.test/jobs/old",
+            ),
+            CrawledPost(
+                category="중앙공기업",
+                title="[신규기관 채용] 정규직 신입 (전산)",
+                deadline_raw="2099.08.11",
+                link="https://example.test/jobs/new",
+            ),
+            CrawledPost(
+                category="중앙공기업",
+                title="[최신기관 채용] 정규직 신입 (전산)",
+                deadline_raw="2099.08.12",
+                link="https://example.test/jobs/newest",
+            ),
+        ]
+        repository.upsert_crawled_posts([posts[0]])
+        repository.acknowledge_post(posts[0].link)
+        repository.upsert_crawled_posts(posts[1:])
+
+        page.route(
+            "https://example.test/**",
+            lambda route: route.fulfill(content_type="text/html", body="<p>공고</p>"),
+        )
+        page.goto(server.base_url)
+        review_lane = page.locator('[data-lane="review_pending"]:visible')
+        cards = review_lane.locator("article")
+        expect(cards).to_have_count(3)
+        assert cards.locator("h3 a").all_inner_texts() == [
+            "최신기관",
+            "신규기관",
+            "기존기관",
+        ]
+        page.locator("#sort-select").select_option("recent")
+        assert cards.locator("h3 a").all_inner_texts()[:2] == ["최신기관", "신규기관"]
+        expect(cards.locator(".new-badge")).to_have_count(2)
+        expect(cards.nth(2).locator(".new-badge")).to_have_count(0)
+        page.screenshot(
+            path=_artifact_path(tmp_path, "dashboard-new-post-badges.png"),
+            full_page=True,
+        )
+
+        newest = cards.filter(
+            has=page.get_by_role("link", name="최신기관", exact=True)
+        )
+        server.delay_posts_after_read = True
+        page.get_by_role("button", name="설정", exact=True).click()
+        expect(page.locator("#settings-drawer")).to_be_visible()
+        page.locator("#settings-form").get_by_role("button", name="설정 저장").click()
+        assert server.posts_read_started.wait(3)
+        repository.upsert_crawled_posts(
+            [
+                CrawledPost(
+                    category="중앙공기업",
+                    title="[뒤늦은기관 채용] 정규직 신입 (전산)",
+                    deadline_raw="2099.08.13",
+                    link="https://example.test/jobs/late",
+                )
+            ]
+        )
+        newest.get_by_role("button", name="확인", exact=True).click()
+        expect(newest.locator(".new-badge")).to_have_count(0)
+        server.release_posts_read.set()
+        expect(page.locator("#toast")).to_contain_text("설정을 저장했습니다")
+        expect(review_lane.get_by_role("link", name="최신기관", exact=True)).to_be_visible()
+        expect(newest.locator(".new-badge")).to_have_count(0)
+        expect(review_lane.get_by_role("link", name="뒤늦은기관", exact=True)).to_be_visible()
+
+        new_card = cards.filter(
+            has=page.get_by_role("link", name="신규기관", exact=True)
+        )
+        with page.expect_popup() as popup_info:
+            new_card.get_by_role("link", name="신규기관", exact=True).click()
+        popup_info.value.close()
+        page.reload()
+        new_card = review_lane.locator("article").filter(
+            has=page.get_by_role("link", name="신규기관", exact=True)
+        )
+        expect(new_card.locator(".new-badge")).to_have_count(1)
+
+        new_card.get_by_role("button", name="지원 예정", exact=True).click()
+        planned = page.locator('[data-lane="planned"]:visible article').filter(
+            has=page.get_by_role("link", name="신규기관", exact=True)
+        )
+        expect(planned).to_be_visible()
+        expect(planned.locator(".new-badge")).to_have_count(0)
+    finally:
+        page.close()
+        server.stop()
 
 
 def test_run_level_failure_is_visible(

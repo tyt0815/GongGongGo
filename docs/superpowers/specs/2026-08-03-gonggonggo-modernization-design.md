@@ -98,6 +98,7 @@
 - nullable parsed deadline date
 - deadline kind: `dated`, `open`, `unknown`
 - status: `review_pending`, `planned`, `applied`, `excluded`
+- new flag: 새로 수집된 검토 대기 공고인지 표시하는 boolean
 - discovered, last seen, user-updated timestamps
 
 화면의 한국어 상태명은 각각 `검토 대기`, `지원 예정`, `지원 완료`, `제외`다.
@@ -170,10 +171,11 @@ UI에는 마지막 실행과 카테고리 결과만 보여주고 상세 진단�
 
 사용자의 상태 변경과 크롤러 반영은 서로 다른 필드의 짧은 트랜잭션이다.
 
-- 상태 API는 status와 사용자 수정 시각만 갱신한다.
+- 상태 API는 status와 사용자 수정 시각을 갱신하고 new flag를 해제한다.
+- 확인 API는 status를 유지한 채 new flag만 해제한다.
 - 크롤러는 기존 행의 category, title, parsed fields, deadline, last seen만 갱신한다.
-- 기존 행의 status를 크롤러 기본값으로 갱신하지 않는다.
-- 신규 insert에만 `검토 대기` 기본 상태를 적용한다.
+- 기존 행의 status와 new flag를 크롤러 기본값으로 갱신하지 않는다.
+- 신규 insert에만 `검토 대기` 기본 상태와 new flag를 적용한다.
 - source link 고유 제약으로 중복을 막는다.
 
 따라서 같은 공고에 대한 두 쓰기가 겹치면 SQLite가 쓰기를 순서대로 처리하고, 서로 담당하지 않는 필드는 보존된다. 전체 행 교체 방식은 사용하지 않는다.
@@ -234,6 +236,8 @@ UI에는 마지막 실행과 카테고리 결과만 보여주고 상세 진단�
 - 필터된 직무를 읽기 쉬운 구분자로 표시
 - 마감은 날짜와 D-day로 표시
 - 상태 이동 버튼을 같은 카드 안에 배치해 시선 이동을 줄임
+- 새로 수집한 검토 대기 공고는 `NEW` 배지와 `확인` 버튼을 표시하고 목록 상단에 최신순으로 배치
+- `확인`이나 상태 이동 시 `NEW`를 해제하며, 제목 링크 열기는 확인으로 간주하지 않음
 - 긴 직무는 줄임 표시하되 전체 내용을 확인할 수 있게 함
 - 제외 직후 실행 취소 제공
 
