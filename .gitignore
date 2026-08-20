@@ -184,6 +184,12 @@ cython_debug/
 .superpowers/
 .worktrees/
 
+# Local test scratch directories
+.tmp/
+.new-*/
+.merge-*/
+.*-tmp/
+
 # GongGongGo runtime files
 logs/
 data/*.db
