@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sqlite3
 from collections.abc import AsyncIterator, Callable
@@ -5,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Protocol
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +16,10 @@ from .config import DB_PATH, JSON_PATH, PROJECT_ROOT
 from .crawl_manager import CrawlManager
 from .database import initialize_database
 from .domain import CrawlSnapshot, PostStatus, Settings
+from .news.domain import NewsCrawlSnapshot, NewsItemType, NewsPeriod, NewsRecord
+from .news.manager import NewsCrawlManager
+from .news.registry import NEWS_CATEGORIES, SOURCES
+from .news.repository import NewsRepository
 from .repository import Repository
 
 
@@ -27,6 +32,17 @@ class CrawlCoordinator(Protocol):
 
 
 ManagerFactory = Callable[[Repository], CrawlCoordinator]
+
+
+class NewsCoordinator(Protocol):
+    def start(self, trigger: str) -> bool: ...
+
+    def snapshot(self) -> NewsCrawlSnapshot: ...
+
+    async def wait(self) -> None: ...
+
+
+NewsManagerFactory = Callable[[NewsRepository], NewsCoordinator]
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 logger = logging.getLogger(__name__)
 
@@ -56,6 +72,7 @@ def create_app(
     json_path: Path = JSON_PATH,
     manager_factory: ManagerFactory | None = None,
     crawler_headless: bool = True,
+    news_manager_factory: NewsManagerFactory | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -66,13 +83,31 @@ def create_app(
             if manager_factory is not None
             else CrawlManager(repository, headless=crawler_headless)
         )
+        news_repository = NewsRepository(db_path)
+        news_manager = (
+            news_manager_factory(news_repository)
+            if news_manager_factory is not None
+            else NewsCrawlManager(news_repository)
+        )
         app.state.repository = repository
         app.state.manager = manager
+        app.state.news_repository = news_repository
+        app.state.news_manager = news_manager
         manager.start("startup")
+        news_manager.start("startup")
         try:
             yield
         finally:
-            await manager.wait()
+            results = await asyncio.gather(
+                manager.wait(), news_manager.wait(), return_exceptions=True
+            )
+            for name, result in zip(("job", "news"), results, strict=True):
+                if isinstance(result, Exception):
+                    logger.error(
+                        "%s crawl manager shutdown wait failed",
+                        name,
+                        exc_info=(type(result), result, result.__traceback__),
+                    )
 
     app = FastAPI(lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=PROJECT_ROOT / "static"), name="static")
@@ -157,6 +192,60 @@ def create_app(
             "run_error": snapshot.run_error,
         }
 
+    @app.get("/api/news")
+    def list_news(
+        request: Request,
+        period: NewsPeriod = NewsPeriod.TODAY,
+        item_type: NewsItemType | None = None,
+        source: str | None = None,
+        category: str | None = None,
+        q: str = Query(default="", max_length=200),
+    ) -> dict[str, object]:
+        if source is not None and source not in SOURCES:
+            raise HTTPException(status_code=422, detail="Unknown news source")
+        if category is not None and category not in NEWS_CATEGORIES:
+            raise HTTPException(status_code=422, detail="Unknown news category")
+        try:
+            records = _news_repository(request).list_items(
+                period,
+                item_type=item_type,
+                source=source,
+                category=category,
+                query=q,
+            )
+            return {"items": _json_news(records)}
+        except (sqlite3.Error, RuntimeError) as exc:
+            raise _database_unavailable(exc) from exc
+
+    @app.delete("/api/news/{id}")
+    def dismiss_news(request: Request, id: int) -> dict[str, bool]:
+        try:
+            if not _news_repository(request).dismiss(id):
+                raise HTTPException(status_code=404, detail="News item not found")
+            return {"dismissed": True}
+        except sqlite3.Error as exc:
+            raise _database_unavailable(exc) from exc
+
+    @app.post("/api/news/crawl/start")
+    async def start_news_crawl(request: Request) -> dict[str, bool]:
+        if not _news_manager(request).start("manual"):
+            raise HTTPException(status_code=409, detail="A news crawl is already running")
+        return {"started": True}
+
+    @app.get("/api/news/crawl/status")
+    def news_crawl_status(request: Request) -> dict[str, object]:
+        snapshot = _news_manager(request).snapshot()
+        return {
+            "running": snapshot.running,
+            "completed_sources": snapshot.completed_sources,
+            "total_sources": snapshot.total_sources,
+            "new_count": snapshot.new_count,
+            "duplicate_count": snapshot.duplicate_count,
+            "expired_count": snapshot.expired_count,
+            "source_errors": dict(snapshot.source_errors),
+            "run_error": snapshot.run_error,
+        }
+
     @app.get("/api/settings")
     def get_settings(request: Request) -> dict[str, object]:
         try:
@@ -211,6 +300,14 @@ def _manager(request: Request) -> CrawlCoordinator:
     return request.app.state.manager
 
 
+def _news_repository(request: Request) -> NewsRepository:
+    return request.app.state.news_repository
+
+
+def _news_manager(request: Request) -> NewsCoordinator:
+    return request.app.state.news_manager
+
+
 def _database_unavailable(exc: Exception) -> HTTPException:
     logger.error(
         "Database operation failed",
@@ -239,3 +336,24 @@ def _json_posts(posts: list[dict[str, object]]) -> list[dict[str, object]]:
             }
         )
     return serialized
+
+
+def _json_news(records: list[NewsRecord]) -> list[dict[str, object]]:
+    return [
+        {
+            "id": record.id,
+            "item_type": record.item_type.value,
+            "source": record.source,
+            "source_name": record.source_name,
+            "category": record.category,
+            "source_category": record.source_category,
+            "title": record.title,
+            "url": record.url,
+            "published_at": (
+                record.published_at.isoformat() if record.published_at is not None else None
+            ),
+            "discovered_at": record.discovered_at.isoformat(),
+            "used_discovered_date": record.published_at is None,
+        }
+        for record in records
+    ]

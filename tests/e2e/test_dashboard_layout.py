@@ -16,6 +16,7 @@ import uvicorn
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from src.domain import CrawledPost, CrawlSnapshot
+from src.news.domain import NewsCrawlSnapshot
 from src.repository import Repository
 from src.web import create_app
 
@@ -46,6 +47,17 @@ class BlockedFakeManager:
             total_categories=4,
             new_count=2,
         )
+
+    async def wait(self) -> None:
+        return None
+
+
+class IdleNewsManager:
+    def start(self, trigger: str) -> bool:
+        return True
+
+    def snapshot(self) -> NewsCrawlSnapshot:
+        return NewsCrawlSnapshot()
 
     async def wait(self) -> None:
         return None
@@ -107,6 +119,7 @@ class LiveServer:
             db_path=self.db_path,
             json_path=self.json_path,
             manager_factory=lambda _repository: self.manager_factory(),
+            news_manager_factory=lambda _repository: IdleNewsManager(),
         )
 
         @app.middleware("http")

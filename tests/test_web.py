@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from src.database import connect, initialize_database
 from src.domain import CrawlSnapshot, CrawledPost, Settings
+from src.news.domain import NewsCrawlSnapshot
 from src.repository import Repository
 
 
@@ -41,6 +42,17 @@ class FakeManager:
         self.finished = True
 
 
+class IdleNewsManager:
+    def start(self, trigger: str) -> bool:
+        return True
+
+    def snapshot(self) -> NewsCrawlSnapshot:
+        return NewsCrawlSnapshot()
+
+    async def wait(self) -> None:
+        return None
+
+
 @pytest.fixture
 def app_parts(tmp_path: Path):
     db_path = tmp_path / "gonggonggo.db"
@@ -59,6 +71,7 @@ def app_parts(tmp_path: Path):
         db_path=db_path,
         json_path=json_path,
         manager_factory=manager_factory,
+        news_manager_factory=lambda _repository: IdleNewsManager(),
     ), db_path, managers
 
 
@@ -183,7 +196,14 @@ def test_duplicate_manual_crawl_returns_conflict(tmp_path: Path) -> None:
 
     from src.web import create_app
 
-    with TestClient(create_app(db_path, json_path, manager_factory)) as client:
+    with TestClient(
+        create_app(
+            db_path,
+            json_path,
+            manager_factory,
+            news_manager_factory=lambda _repository: IdleNewsManager(),
+        )
+    ) as client:
         assert client.post("/api/crawl/start").status_code == 409
 
 

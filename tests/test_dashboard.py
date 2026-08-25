@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from src.database import initialize_database
 from src.domain import CrawlSnapshot, CrawledPost
+from src.news.domain import NewsCrawlSnapshot
 from src.repository import Repository
 from src.web import create_app
 
@@ -20,12 +21,28 @@ class IdleManager:
         return None
 
 
+class IdleNewsManager:
+    def start(self, trigger: str) -> bool:
+        return True
+
+    def snapshot(self) -> NewsCrawlSnapshot:
+        return NewsCrawlSnapshot()
+
+    async def wait(self) -> None:
+        return None
+
+
 @pytest.fixture
 def dashboard_parts(tmp_path: Path):
     db_path = tmp_path / "gonggonggo.db"
     json_path = tmp_path / "job_posts.json"
     json_path.write_text("[]", encoding="utf-8")
-    app = create_app(db_path, json_path, lambda repository: IdleManager())
+    app = create_app(
+        db_path,
+        json_path,
+        lambda repository: IdleManager(),
+        news_manager_factory=lambda _repository: IdleNewsManager(),
+    )
     return app, db_path
 
 
