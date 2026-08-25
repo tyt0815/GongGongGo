@@ -168,6 +168,10 @@ def test_news_schema_is_added_without_changing_jobs(tmp_path: Path):
         job_columns_before = tuple(
             row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
         )
+        job_schema_before = connection.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'job_posts'"
+        ).fetchone()["sql"]
 
     initialize_database(db_path, json_path)
 
@@ -181,10 +185,15 @@ def test_news_schema_is_added_without_changing_jobs(tmp_path: Path):
         job_columns_after = tuple(
             row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
         )
+        job_schema_after = connection.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'job_posts'"
+        ).fetchone()["sql"]
         job_count = connection.execute("SELECT COUNT(*) FROM job_posts").fetchone()[0]
 
     assert {"news_items", "news_dismissals"} <= table_names
     assert job_columns_after == job_columns_before
+    assert job_schema_after == job_schema_before
     assert job_count == 1
 
 
