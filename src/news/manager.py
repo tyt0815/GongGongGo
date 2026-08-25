@@ -106,7 +106,7 @@ class NewsCrawlManager:
             return source, SourceResult(source, error=message)
 
     async def _save_source_result(self, source: str, result: SourceResult) -> None:
-        error = result.error
+        error = _normalize_source_error(result.error)
         stats = SaveStats()
         try:
             if error is None:
@@ -157,3 +157,9 @@ class NewsCrawlManager:
 
 def _error_message(error: Exception) -> str:
     return str(error) or type(error).__name__
+
+
+def _normalize_source_error(error: str | None) -> str | None:
+    if error is None:
+        return None
+    return error.strip() or "source failed without an error message"

@@ -48,7 +48,6 @@ async def test_partial_failure_saves_peers_and_rejects_duplicate_start(
     manager = NewsCrawlManager(repository, crawlers=crawlers)
 
     assert manager.start("manual") is True
-    assert manager.start("manual") is False
     await manager.wait()
 
     state = manager.snapshot()
@@ -76,6 +75,85 @@ async def test_source_runs_off_event_loop(repository: NewsRepository) -> None:
     await manager.wait()
 
     assert worker[0] != owner
+
+
+@pytest.mark.asyncio
+async def test_sources_begin_concurrently_before_their_shared_release(
+    repository: NewsRepository,
+) -> None:
+    from src.news.manager import NewsCrawlManager
+
+    first_started = threading.Event()
+    second_started = threading.Event()
+    release = threading.Event()
+
+    def crawl(source: str, started: threading.Event) -> SourceResult:
+        started.set()
+        release.wait()
+        return SourceResult(source)
+
+    manager = NewsCrawlManager(
+        repository,
+        crawlers={
+            "hankyung": lambda: crawl("hankyung", first_started),
+            "mk": lambda: crawl("mk", second_started),
+        },
+    )
+
+    assert manager.start("manual") is True
+    try:
+        await asyncio.to_thread(first_started.wait)
+        await asyncio.to_thread(second_started.wait)
+        assert manager.snapshot().running is True
+    finally:
+        release.set()
+    await manager.wait()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_start_is_rejected_while_blocked_and_allowed_after_completion(
+    repository: NewsRepository,
+) -> None:
+    from src.news.manager import NewsCrawlManager
+
+    started = threading.Event()
+    release = threading.Event()
+    calls = 0
+
+    def crawl() -> SourceResult:
+        nonlocal calls
+        calls += 1
+        started.set()
+        release.wait()
+        return SourceResult("hankyung")
+
+    manager = NewsCrawlManager(repository, crawlers={"hankyung": crawl})
+
+    assert manager.start("manual") is True
+    await asyncio.to_thread(started.wait)
+    assert manager.start("manual") is False
+    release.set()
+    await manager.wait()
+    assert manager.start("manual") is True
+    await manager.wait()
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_empty_source_error_uses_a_meaningful_fallback(repository: NewsRepository) -> None:
+    from src.news.manager import NewsCrawlManager
+
+    manager = NewsCrawlManager(
+        repository,
+        crawlers={"mk": lambda: SourceResult("mk", error="")},
+    )
+
+    assert manager.start("manual") is True
+    await manager.wait()
+
+    assert manager.snapshot().source_errors == {
+        "mk": "source failed without an error message"
+    }
 
 
 @pytest.mark.asyncio
