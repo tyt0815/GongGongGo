@@ -17,11 +17,10 @@ _LIST_URL = f"{_BASE_URL}/kodit/na/ntt/selectNttList.do?mi=2639&bbsId=47"
 
 def parse_kodit_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
     soup = BeautifulSoup(html, "html.parser")
-    links = soup.select("td.bbs_tit a.nttInfoBtn")
-    if not links:
-        if soup.select_one("td.bbs_tit") is None:
-            raise ValueError("KODIT list container is missing")
-        return (), 0
+    container = soup.select_one("table")
+    if container is None:
+        raise ValueError("KODIT list container is missing")
+    links = container.select("td.bbs_tit a.nttInfoBtn")
 
     items: list[CrawledNewsItem] = []
     malformed = 0
@@ -43,7 +42,7 @@ def parse_kodit_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
                 url=normalize_url(
                     f"{_BASE_URL}/kodit/na/ntt/selectNttInfo.do?bbsId=47&mi=2639&nttSn={identifier}"
                 ),
-                published_at=_parse_published_at(_collapsed_text(row)),
+                published_at=_parse_published_at(_date_cell(row)),
             )
         )
     return tuple(items), malformed
@@ -81,6 +80,13 @@ def _collapsed_text(element: object) -> str | None:
         return None
     text = re.sub(r"\s+", " ", " ".join(element.stripped_strings)).strip()
     return text or None
+
+
+def _date_cell(row: object) -> str | None:
+    cells = row.find_all("td", recursive=False)
+    if len(cells) < 2:
+        return None
+    return _collapsed_text(cells[-1])
 
 
 def _parse_published_at(value: str | None) -> datetime | None:

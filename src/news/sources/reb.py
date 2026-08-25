@@ -18,11 +18,10 @@ _LIST_URL = f"{_BASE_URL}/reb/na/ntt/selectNttList.do?mi=9565&bbsId=1154"
 
 def parse_reb_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
     soup = BeautifulSoup(html, "html.parser")
-    links = soup.select("td.al.mBlock a.nttInfoBtn")
-    if not links:
-        if soup.select_one("td.al.mBlock") is None:
-            raise ValueError("REB list container is missing")
-        return (), 0
+    container = soup.select_one("table")
+    if container is None:
+        raise ValueError("REB list container is missing")
+    links = container.select("td.al.mBlock a.nttInfoBtn")
 
     items: list[CrawledNewsItem] = []
     malformed = 0
@@ -44,7 +43,7 @@ def parse_reb_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
                 url=normalize_url(
                     f"{_BASE_URL}/reb/na/ntt/selectNttInfo.do?bbsId=1154&mi=9565&nttSn={identifier}"
                 ),
-                published_at=_parse_published_at(_collapsed_text(row)),
+                published_at=_parse_published_at(_date_cell(row)),
             )
         )
     return tuple(items), malformed
@@ -82,6 +81,13 @@ def _collapsed_text(element: object) -> str | None:
         return None
     text = re.sub(r"\s+", " ", " ".join(element.stripped_strings)).strip()
     return text or None
+
+
+def _date_cell(row: object) -> str | None:
+    cells = row.find_all("td", recursive=False)
+    if len(cells) < 2:
+        return None
+    return _collapsed_text(cells[-1])
 
 
 def _parse_published_at(value: str | None) -> datetime | None:

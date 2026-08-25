@@ -41,6 +41,45 @@ def test_kodit_and_kogas_direct_urls(fixtures: Callable[[str], bytes]) -> None:
 
 
 @pytest.mark.parametrize(
+    ("parser", "html"),
+    [
+        (parse_reb_page, b"<table></table>"),
+        (parse_kodit_page, b"<table></table>"),
+    ],
+    ids=["reb", "kodit"],
+)
+def test_table_list_parsers_accept_empty_observed_containers(
+    parser: Callable[[bytes], tuple[tuple[object, ...], int]], html: bytes
+) -> None:
+    assert parser(html) == ((), 0)
+
+
+@pytest.mark.parametrize(
+    ("parser", "html"),
+    [
+        (
+            parse_reb_page,
+            b"<table><tr><td class='al mBlock'><a class='nttInfoBtn' data-id='1'>"
+            b"title 2026.08.25</a></td><td>date unavailable</td></tr></table>",
+        ),
+        (
+            parse_kodit_page,
+            b"<table><tr><td class='bbs_tit'><a class='nttInfoBtn' data-id='1'>"
+            b"title 2026.08.25</a></td><td>date unavailable</td></tr></table>",
+        ),
+    ],
+    ids=["reb", "kodit"],
+)
+def test_table_list_parsers_do_not_parse_dates_from_titles(
+    parser: Callable[[bytes], tuple[tuple[object, ...], int]], html: bytes
+) -> None:
+    items, malformed = parser(html)
+
+    assert items[0].published_at is None
+    assert malformed == 0
+
+
+@pytest.mark.parametrize(
     ("crawl", "page_marker"),
     [
         (reb.crawl, "currPage=2"),
@@ -88,6 +127,29 @@ def test_institution_crawlers_stop_after_page_with_old_valid_item(
     assert result.error is None
     assert len(calls) == 1
     assert [item.published_at for item in result.items] == [None]
+
+
+def test_reb_crawl_keeps_newer_and_malformed_dates_before_stopping_at_old_date() -> None:
+    page = b"""
+    <table>
+      <tr><td class='al mBlock'><a class='nttInfoBtn' data-id='1'>new</a></td><td>2026.08.25.</td></tr>
+      <tr><td class='al mBlock'><a class='nttInfoBtn' data-id='2'>old</a></td><td>2026.07.26.</td></tr>
+      <tr><td class='al mBlock'><a class='nttInfoBtn' data-id='3'>undated 2026.08.25</a></td><td>date unavailable</td></tr>
+    </table>
+    """
+    calls: list[str] = []
+
+    result = reb.crawl(
+        fetcher=lambda url: calls.append(url) or page,
+        today=date(2026, 8, 25),
+    )
+
+    assert len(calls) == 1
+    assert [item.title for item in result.items] == ["new", "undated 2026.08.25"]
+    assert [item.published_at.date() if item.published_at is not None else None for item in result.items] == [
+        date(2026, 8, 25),
+        None,
+    ]
 
 
 @pytest.mark.parametrize(
