@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .domain import NewsItemType
 
 NEWS_CATEGORIES = ("주요뉴스", "정치", "경제", "사회", "IT", "세계")
+NEWS_FILTER_CATEGORIES = NEWS_CATEGORIES + ("보도자료", "정기 통계")
 
 
 @dataclass(frozen=True)

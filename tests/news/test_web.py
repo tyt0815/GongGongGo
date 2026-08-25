@@ -1,6 +1,6 @@
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -150,7 +150,7 @@ def test_news_uses_discovered_date_when_published_at_is_missing(client, app_part
                 item_type=NewsItemType.INSTITUTION,
                 source="reb",
                 source_name="한국부동산원",
-                category="주요뉴스",
+                category="보도자료",
                 source_category=None,
                 title="Notice",
                 url="https://example.test/news/notice",
@@ -166,10 +166,74 @@ def test_news_uses_discovered_date_when_published_at_is_missing(client, app_part
     assert item["discovered_at"].endswith("+09:00")
 
 
+def test_news_response_serializes_every_field_in_effective_date_order(client, app_parts) -> None:
+    _, db_path, _ = app_parts
+    discovered_at = datetime.combine(datetime.now(SEOUL).date(), time(14), tzinfo=SEOUL)
+    published_at = discovered_at - timedelta(days=1, hours=5)
+    NewsRepository(db_path).upsert_items(
+        [
+            CrawledNewsItem(
+                item_type=NewsItemType.NEWSPAPER,
+                source="hankyung",
+                source_name="한국경제",
+                category="IT",
+                source_category="IT·과학",
+                title="Older AI article",
+                url="https://example.test/news/older",
+                published_at=published_at,
+            ),
+            CrawledNewsItem(
+                item_type=NewsItemType.INSTITUTION,
+                source="reb",
+                source_name="한국부동산원",
+                category="보도자료",
+                source_category=None,
+                title="Newest institution release",
+                url="https://example.test/news/newest",
+                published_at=None,
+            ),
+        ],
+        now=discovered_at,
+    )
+
+    assert client.get("/api/news?period=7d").json() == {
+        "items": [
+            {
+                "id": 2,
+                "item_type": "institution",
+                "source": "reb",
+                "source_name": "한국부동산원",
+                "category": "보도자료",
+                "source_category": None,
+                "title": "Newest institution release",
+                "url": "https://example.test/news/newest",
+                "published_at": None,
+                "discovered_at": discovered_at.isoformat(),
+                "used_discovered_date": True,
+            },
+            {
+                "id": 1,
+                "item_type": "newspaper",
+                "source": "hankyung",
+                "source_name": "한국경제",
+                "category": "IT",
+                "source_category": "IT·과학",
+                "title": "Older AI article",
+                "url": "https://example.test/news/older",
+                "published_at": published_at.isoformat(),
+                "discovered_at": discovered_at.isoformat(),
+                "used_discovered_date": False,
+            },
+        ]
+    }
+
+
 def test_news_validation(client) -> None:
     assert client.get("/api/news?period=90d").status_code == 422
     assert client.get("/api/news?item_type=other").status_code == 422
     assert client.get("/api/news?source=unknown").status_code == 422
+    assert client.get("/api/news?category=보도자료").status_code == 200
+    assert client.get("/api/news?category=정기 통계").status_code == 200
     assert client.get("/api/news?category=연예").status_code == 422
     assert client.get("/api/news", params={"q": "x" * 201}).status_code == 422
 

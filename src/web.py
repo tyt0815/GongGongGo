@@ -18,7 +18,7 @@ from .database import initialize_database
 from .domain import CrawlSnapshot, PostStatus, Settings
 from .news.domain import NewsCrawlSnapshot, NewsItemType, NewsPeriod, NewsRecord
 from .news.manager import NewsCrawlManager
-from .news.registry import NEWS_CATEGORIES, SOURCES
+from .news.registry import NEWS_FILTER_CATEGORIES, SOURCES
 from .news.repository import NewsRepository
 from .repository import Repository
 
@@ -203,7 +203,7 @@ def create_app(
     ) -> dict[str, object]:
         if source is not None and source not in SOURCES:
             raise HTTPException(status_code=422, detail="Unknown news source")
-        if category is not None and category not in NEWS_CATEGORIES:
+        if category is not None and category not in NEWS_FILTER_CATEGORIES:
             raise HTTPException(status_code=422, detail="Unknown news category")
         try:
             records = _news_repository(request).list_items(
