@@ -134,7 +134,7 @@
   }
 
   async function dismissNews(item, button) {
-    const deleteRequestVersion = ++state.requestVersion;
+    ++state.requestVersion;
     button.disabled = true;
     try {
       await request(`/api/news/${item.id}`, { method: "DELETE" });
@@ -143,7 +143,7 @@
       await refreshNews();
     } catch (error) {
       button.disabled = false;
-      if (deleteRequestVersion === state.requestVersion) showListError(error.message);
+      showListError(error.message);
     }
   }
 

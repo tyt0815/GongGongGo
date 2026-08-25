@@ -176,14 +176,27 @@ def test_news_client_contract_invalidates_stale_results_and_keeps_date_metadata(
     """Catches an old list response restoring a dismissed item or dropping publication metadata."""
     script = (Path(__file__).parents[1] / "static" / "news.js").read_text(encoding="utf-8")
 
-    assert "const deleteRequestVersion = ++state.requestVersion;" in script
-    assert script.index("const deleteRequestVersion = ++state.requestVersion;") < script.index(
+    assert "++state.requestVersion;" in script
+    assert script.index("++state.requestVersion;") < script.index(
         'await request(`/api/news/${item.id}`, { method: "DELETE" });'
     )
     assert "await refreshNews();" in script
     assert 'time.dateTime = item.published_at || item.discovered_at || "";' in script
     assert "toLocaleString(\"ko-KR\"" in script
     assert "수집일 기준" in script
+
+
+def test_news_client_contract_always_reports_failed_dismissals() -> None:
+    """Catches a newer list refresh silencing a failed processing request."""
+    script = (Path(__file__).parents[1] / "static" / "news.js").read_text(encoding="utf-8")
+    dismiss = script.split("async function dismissNews", 1)[1].split("function newsQuery", 1)[0]
+
+    assert "button.disabled = false;" in dismiss
+    assert "showListError(error.message);" in dismiss
+    assert "deleteRequestVersion === state.requestVersion" not in dismiss
+    assert dismiss.index('await request(`/api/news/${item.id}`, { method: "DELETE" });') < dismiss.index(
+        "state.items = state.items.filter((current) => current.id !== item.id);"
+    )
 
 
 def test_post_api_exposes_structured_fields_and_preserves_original_title(
