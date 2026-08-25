@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.database import initialize_database
+from src.database import connect, initialize_database
 from src.news.domain import (
     CrawledNewsItem,
     NewsItemType,
@@ -83,6 +83,13 @@ def test_cleanup_respects_inclusive_ttls(
                 source_name="한국부동산원",
                 published_at=now - timedelta(days=30),
             ),
+            item(
+                "https://x.test/i-keep",
+                item_type=NewsItemType.INSTITUTION,
+                source="reb",
+                source_name="한국부동산원",
+                published_at=now - timedelta(days=29),
+            ),
         ],
         now=now,
     )
@@ -98,16 +105,28 @@ def test_dismissal_expires_at_original_ttl_boundary(
     row = repository.list_items(NewsPeriod.SEVEN_DAYS, today=now.date())[0]
 
     assert repository.dismiss(row.id, now=now)
+    with connect(repository.db_path) as connection:
+        dismissal = connection.execute(
+            "SELECT expires_at FROM news_dismissals WHERE url = ?", (row.url,)
+        ).fetchone()
+    assert dismissal["expires_at"] == "2026-08-27T00:00:00+09:00"
     assert (
-        repository.upsert_items([item(row.url, published_at=published)], now=now)
+        repository.upsert_items(
+            [item(row.url, published_at=published)],
+            now=datetime(2026, 8, 26, 23, 59, 59, 999999, tzinfo=SEOUL),
+        )
         .suppressed_count
         == 1
     )
 
-    later = now + timedelta(days=2)
-    repository.cleanup(now=later)
+    expires_at = datetime(2026, 8, 27, tzinfo=SEOUL)
+    repository.cleanup(now=expires_at)
 
-    assert repository.upsert_items([item(row.url, published_at=later)], now=later).new_count == 1
+    assert (
+        repository.upsert_items([item(row.url, published_at=published)], now=expires_at)
+        .new_count
+        == 1
+    )
 
 
 def test_upsert_preserves_discovery_fills_publication_and_never_downgrades_category(
@@ -235,6 +254,7 @@ def test_list_items_applies_type_source_and_category_filters(
         ("100%", ["https://x.test/percent"]),
         ("safe_name", ["https://x.test/underscore"]),
         ("%_", ["https://x.test/percent"]),
+        ("path\\name", ["https://x.test/backslash"]),
     ],
 )
 def test_list_items_treats_like_wildcards_as_literal_title_searches(
@@ -244,6 +264,7 @@ def test_list_items_treats_like_wildcards_as_literal_title_searches(
         [
             item("https://x.test/percent", title="100%_match", published_at=now),
             item("https://x.test/underscore", title="safe_name", published_at=now),
+            item("https://x.test/backslash", title="path\\name", published_at=now),
             item("https://x.test/plain", title="plain title", published_at=now),
         ],
         now=now,
