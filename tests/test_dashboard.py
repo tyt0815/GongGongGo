@@ -131,6 +131,61 @@ def test_news_client_contract_keeps_news_actions_isolated_and_safe() -> None:
     assert 'byId("crawl-button")' not in script
 
 
+def test_news_dashboard_uses_exact_filter_categories_and_labeled_view_controls(client) -> None:
+    """Catches UI filters drifting from the validated API vocabulary or unlabeled panels."""
+    html = client.get("/").text
+    category_options = html.split('<select id="news-category-filter">', 1)[1].split(
+        "</select>", 1
+    )[0]
+
+    assert [
+        '<option value="">전체 카테고리</option>',
+        '<option value="주요뉴스">주요뉴스</option>',
+        '<option value="정치">정치</option>',
+        '<option value="경제">경제</option>',
+        '<option value="사회">사회</option>',
+        '<option value="IT">IT</option>',
+        '<option value="세계">세계</option>',
+        '<option value="보도자료">보도자료</option>',
+        '<option value="정기 통계">정기 통계</option>',
+    ] == [line.strip() for line in category_options.splitlines() if "<option" in line]
+    assert 'id="jobs-primary-tab"' in html
+    assert 'id="news-primary-tab"' in html
+    assert 'aria-controls="job-view"' in html
+    assert 'aria-controls="news-view"' in html
+    assert 'id="job-view" aria-labelledby="jobs-primary-tab"' in html
+    assert 'id="news-view" hidden aria-labelledby="news-primary-tab"' in html
+
+
+def test_news_client_contract_preserves_crawl_diagnostics_and_lifecycle() -> None:
+    """Catches list refreshes clearing crawl diagnostics or abandoning an active crawl."""
+    script = (Path(__file__).parents[1] / "static" / "news.js").read_text(encoding="utf-8")
+
+    assert 'const listError = byId("news-errors");' in script
+    assert 'const crawlError = byId("news-crawl-errors");' in script
+    assert "function clearListError()" in script
+    assert "function showCrawlError(message)" in script
+    assert "if (error.status !== 409) {" in script
+    assert "state.crawlActive = true;" in script
+    assert "scheduleNewsPolling();" in script
+    assert "if (state.listError) {" in script
+    assert script.index("if (state.listError) {") < script.index("if (!state.items.length) {")
+
+
+def test_news_client_contract_invalidates_stale_results_and_keeps_date_metadata() -> None:
+    """Catches an old list response restoring a dismissed item or dropping publication metadata."""
+    script = (Path(__file__).parents[1] / "static" / "news.js").read_text(encoding="utf-8")
+
+    assert "const deleteRequestVersion = ++state.requestVersion;" in script
+    assert script.index("const deleteRequestVersion = ++state.requestVersion;") < script.index(
+        'await request(`/api/news/${item.id}`, { method: "DELETE" });'
+    )
+    assert "await refreshNews();" in script
+    assert 'time.dateTime = item.published_at || item.discovered_at || "";' in script
+    assert "toLocaleString(\"ko-KR\"" in script
+    assert "수집일 기준" in script
+
+
 def test_post_api_exposes_structured_fields_and_preserves_original_title(
     client, seeded_posts: tuple[CrawledPost, CrawledPost]
 ) -> None:

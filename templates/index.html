@@ -10,11 +10,11 @@
 <body>
     <main class="dashboard-shell">
         <nav class="primary-tabs" aria-label="기본 보기">
-            <button type="button" class="selected" data-primary-tab="jobs" aria-pressed="true">채용공고</button>
-            <button type="button" data-primary-tab="news" aria-pressed="false">뉴스/기관소식</button>
+            <button id="jobs-primary-tab" type="button" class="selected" data-primary-tab="jobs" aria-pressed="true" aria-controls="job-view">채용공고</button>
+            <button id="news-primary-tab" type="button" data-primary-tab="news" aria-pressed="false" aria-controls="news-view">뉴스/기관소식</button>
         </nav>
 
-        <section id="job-view">
+        <section id="job-view" aria-labelledby="jobs-primary-tab">
         <header class="app-header">
             <div>
                 <p class="eyebrow">GONGGONGGO</p>
@@ -90,7 +90,7 @@
         </section>
         </section>
 
-        <section id="news-view" hidden aria-label="뉴스 및 기관소식">
+        <section id="news-view" hidden aria-labelledby="news-primary-tab">
             <header class="app-header news-header">
                 <div>
                     <p class="eyebrow">GONGGONGGO</p>
@@ -139,9 +139,9 @@
                         <option value="경제">경제</option>
                         <option value="사회">사회</option>
                         <option value="IT">IT</option>
-                        <option value="증권">증권</option>
+                        <option value="세계">세계</option>
                         <option value="보도자료">보도자료</option>
-                        <option value="정기 공시">정기 공시</option>
+                        <option value="정기 통계">정기 통계</option>
                     </select>
                 </label>
                 <label class="news-search-label">제목 검색
