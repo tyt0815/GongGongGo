@@ -7,6 +7,7 @@ from pathlib import Path
 from src.config import DEFAULT_INSTITUTION_KEYWORDS, DEFAULT_ROLE_KEYWORDS
 from src.domain import DeadlineKind, PostStatus
 from src.parsing import extract_institution, parse_deadline, parse_title
+from src.news.schema import initialize_news_schema
 
 
 _MIGRATION_KEY = "json_migration_v1"
@@ -119,6 +120,7 @@ def initialize_database(db_path: Path, json_path: Path) -> None:
             );
             """
         )
+        initialize_news_schema(connection)
         if "is_new" not in {
             row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
         }:

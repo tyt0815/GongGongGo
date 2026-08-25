@@ -6,6 +6,8 @@ import pytest
 
 from src.config import DEFAULT_INSTITUTION_KEYWORDS, DEFAULT_ROLE_KEYWORDS
 from src.database import connect, initialize_database
+from src.domain import CrawledPost
+from src.repository import Repository
 
 
 def test_migration_imports_only_strict_dates_maps_status_and_preserves_source(
@@ -144,6 +146,46 @@ def test_initialize_database_creates_schema_defaults_and_idempotent_migration(
     assert post_count == 1
     assert journal_mode == "wal"
     assert busy_timeout >= 5000
+
+
+def test_news_schema_is_added_without_changing_jobs(tmp_path: Path):
+    db_path = tmp_path / "gonggonggo.db"
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+
+    initialize_database(db_path, json_path)
+    Repository(db_path).upsert_crawled_posts(
+        [
+            CrawledPost(
+                "central",
+                "[Target Agency] full-time (software)",
+                "2099.12.31",
+                "https://example.test/job",
+            )
+        ]
+    )
+    with connect(db_path) as connection:
+        job_columns_before = tuple(
+            row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
+        )
+
+    initialize_database(db_path, json_path)
+
+    with connect(db_path) as connection:
+        table_names = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        job_columns_after = tuple(
+            row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
+        )
+        job_count = connection.execute("SELECT COUNT(*) FROM job_posts").fetchone()[0]
+
+    assert {"news_items", "news_dismissals"} <= table_names
+    assert job_columns_after == job_columns_before
+    assert job_count == 1
 
 
 def test_user_removed_keyword_lists_remain_empty_after_restart(tmp_path: Path):
