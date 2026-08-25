@@ -99,6 +99,64 @@ class BlockedNewsManager:
         return None
 
 
+class CompletingNewsManager:
+    """Manual-only news run that completes on the second status read."""
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self.running = False
+        self.status_reads = 0
+        self.terminal_snapshot = NewsCrawlSnapshot()
+
+    def start(self, trigger: str) -> bool:
+        if trigger == "startup":
+            return True
+        if self.running:
+            return False
+        self.running = True
+        self.status_reads = 0
+        return True
+
+    def snapshot(self) -> NewsCrawlSnapshot:
+        if not self.running:
+            return self.terminal_snapshot
+        self.status_reads += 1
+        if self.status_reads == 1:
+            return NewsCrawlSnapshot(
+                running=True,
+                completed_sources=1,
+                total_sources=5,
+            )
+
+        now = datetime.now(ZoneInfo("Asia/Seoul"))
+        NewsRepository(self.db_path).upsert_items(
+            [
+                CrawledNewsItem(
+                    item_type=NewsItemType.NEWSPAPER,
+                    source="hankyung",
+                    source_name="한국경제",
+                    category="IT",
+                    source_category="IT·과학",
+                    title="수동 수집 신규 기사",
+                    url="https://example.test/news/manual-result",
+                    published_at=now,
+                )
+            ],
+            now=now,
+        )
+        self.running = False
+        self.terminal_snapshot = NewsCrawlSnapshot(
+            completed_sources=4,
+            total_sources=5,
+            new_count=1,
+            source_errors={"mk": "목록 응답 지연"},
+        )
+        return self.terminal_snapshot
+
+    async def wait(self) -> None:
+        return None
+
+
 class RetryFakeManager:
     """No-network manager that completes one accepted slash-category retry."""
 
@@ -599,14 +657,30 @@ def test_keyword_changes_apply_immediately_and_persist_after_restart(
 def test_news_filters_opens_and_dismisses(
     page: Page, live_server: LiveServer
 ) -> None:
-    """Catches broken news filter labels, external links, or completed-item removal."""
+    """Catches any no-op news filter, external link, or completed-item removal."""
     page.goto(live_server.base_url)
     page.get_by_role("button", name="뉴스/기관소식").click()
+
+    expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_be_visible()
+    expect(page.locator(".news-row", has_text="공공부문 AI 전환")).to_have_count(0)
+
     page.get_by_role("button", name="최근 7일").click()
+    expect(page.locator(".news-row", has_text="공공부문 AI 전환")).to_be_visible()
+    expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_be_visible()
+    expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_be_visible()
+    expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_be_visible()
+
     page.get_by_label("자료 종류").select_option("newspaper")
+    expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_have_count(0)
+
     page.get_by_label("출처").select_option("hankyung")
+    expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_have_count(0)
+
     page.get_by_label("분류").select_option("IT")
+    expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_have_count(0)
+
     page.get_by_label("제목 검색").fill("AI")
+    expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_have_count(0)
 
     row = page.locator(".news-row", has_text="공공부문 AI 전환")
     expect(row).to_be_visible()
@@ -678,6 +752,45 @@ def test_blocked_news_crawl_keeps_job_crawl_available(
         server.stop()
 
 
+def test_manual_news_crawl_polls_partial_failure_and_refreshes_results(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Catches a missing news manual-crawl running/terminal refresh lifecycle."""
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    db_path = tmp_path / "gonggonggo.db"
+    news_manager = CompletingNewsManager(db_path)
+    server = LiveServer(
+        db_path,
+        json_path,
+        manager_factory=IdleJobManager,
+        news_manager_factory=lambda: news_manager,
+    )
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    try:
+        server.start()
+        page.goto(server.base_url)
+        page.get_by_role("button", name="뉴스/기관소식").click()
+        refreshed = page.locator(".news-row", has_text="수동 수집 신규 기사")
+        expect(refreshed).to_have_count(0)
+
+        news_button = page.locator("#news-crawl-button")
+        expect(news_button).to_be_enabled()
+        news_button.click()
+
+        expect(news_button).to_be_disabled()
+        expect(page.locator("#news-crawl-status")).to_contain_text("수집 1/5")
+        expect(news_button).to_be_enabled(timeout=4000)
+        expect(page.locator("#news-crawl-status")).to_contain_text("수집 4/5")
+        expect(page.locator("#news-crawl-errors")).to_contain_text(
+            "mk: 목록 응답 지연"
+        )
+        expect(refreshed).to_be_visible()
+    finally:
+        page.close()
+        server.stop()
+
+
 def _legacy_posts() -> list[dict[str, str]]:
     return [
         {
@@ -737,6 +850,26 @@ def _seed_news(db_path: Path) -> None:
                 title="공공 데이터 개방 확대",
                 url="https://example.test/news/public-data",
                 published_at=now,
+            ),
+            CrawledNewsItem(
+                item_type=NewsItemType.NEWSPAPER,
+                source="hankyung",
+                source_name="한국경제",
+                category="경제",
+                source_category="경제",
+                title="한국경제 경제정책",
+                url="https://example.test/news/hankyung-economy",
+                published_at=now - timedelta(days=2),
+            ),
+            CrawledNewsItem(
+                item_type=NewsItemType.NEWSPAPER,
+                source="hankyung",
+                source_name="한국경제",
+                category="IT",
+                source_category="IT·과학",
+                title="클라우드 보안 강화",
+                url="https://example.test/news/cloud-security",
+                published_at=now - timedelta(days=1),
             ),
         ],
         now=now,

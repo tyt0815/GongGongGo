@@ -78,11 +78,12 @@ git diff --check
 - 실행 단위 저장 실패 표시와 빠른 수집 완료 후 버튼/목록 갱신
 - 신규 공고 상단 정렬, `NEW` 배지, 제목 링크 유지, 확인·상태 이동 시 해제
 - 카드 내부 버튼, 구조화·fallback 제목, 긴 직무 tooltip, 설정 drawer, 진행 상태와 한국어 렌더링
-- 뉴스 기간·자료 종류·출처·분류·제목 필터, 새 탭 원문과 처리 완료 후 행 제거
+- 뉴스 기간·자료 종류·출처·분류·제목 필터 각각의 비교 행 제외, 새 탭 원문과 처리 완료 후 행 제거
 - 390px 뉴스 행의 가로 overflow 방지, 탭 왕복 뒤 채용 상태 panel 유지
 - 뉴스 수집이 진행 중이어도 채용 수동 수집 버튼을 사용할 수 있는 manager 독립성
+- 뉴스 수동 수집 버튼의 running→부분 실패 terminal polling, 버튼 재활성화와 신규 결과 refresh
 
-2026-08-25 Python 3.12.10 전체 실행 결과는 `206 passed, 0 warnings`입니다. 브라우저 E2E 10개와 다섯 출처 fixture parser 테스트를 포함하며, `node --check static/app.js`와 `node --check static/news.js`도 통과했습니다. 자동화 테스트는 모두 오프라인이고 임시 DB를 사용합니다.
+2026-08-25 Python 3.12.10 전체 실행 결과는 `207 passed, 0 warnings`입니다. 브라우저 E2E 11개와 다섯 출처 fixture parser 테스트를 포함하며, `node --check static/app.js`와 `node --check static/news.js`도 통과했습니다. 자동화 테스트는 모두 오프라인이고 임시 DB를 사용합니다.
 
 2026-08-25 안전한 시작 smoke는 실제 `create_app`과 Uvicorn을 임시 DB·JSON 및 임의 loopback 포트에서 실행했습니다. 채용과 뉴스 manager가 모두 실행 중인 상태에서 `/health` 200, DB 생성, 실제 socket bind `127.0.0.1`, 정상 종료를 확인했습니다. 운영 DB·JSON과 로그는 사용하지 않았습니다.
 
