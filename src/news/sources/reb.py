@@ -18,7 +18,7 @@ _LIST_URL = f"{_BASE_URL}/reb/na/ntt/selectNttList.do?mi=9565&bbsId=1154"
 
 def parse_reb_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
     soup = BeautifulSoup(html, "html.parser")
-    container = soup.select_one("table")
+    container = soup.select_one("table:has(th.al.mBlock), table:has(td.al.mBlock)")
     if container is None:
         raise ValueError("REB list container is missing")
     links = container.select("td.al.mBlock a.nttInfoBtn")

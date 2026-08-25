@@ -17,7 +17,7 @@ _LIST_URL = f"{_BASE_URL}/kodit/na/ntt/selectNttList.do?mi=2639&bbsId=47"
 
 def parse_kodit_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
     soup = BeautifulSoup(html, "html.parser")
-    container = soup.select_one("table")
+    container = soup.select_one("table:has(th.bbs_tit), table:has(td.bbs_tit)")
     if container is None:
         raise ValueError("KODIT list container is missing")
     links = container.select("td.bbs_tit a.nttInfoBtn")

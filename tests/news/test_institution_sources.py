@@ -43,8 +43,8 @@ def test_kodit_and_kogas_direct_urls(fixtures: Callable[[str], bytes]) -> None:
 @pytest.mark.parametrize(
     ("parser", "html"),
     [
-        (parse_reb_page, b"<table></table>"),
-        (parse_kodit_page, b"<table></table>"),
+        (parse_reb_page, b"<table><thead><th class='al mBlock'>title</th></thead></table>"),
+        (parse_kodit_page, b"<table><thead><th class='bbs_tit'>title</th></thead></table>"),
     ],
     ids=["reb", "kodit"],
 )
@@ -52,6 +52,16 @@ def test_table_list_parsers_accept_empty_observed_containers(
     parser: Callable[[bytes], tuple[tuple[object, ...], int]], html: bytes
 ) -> None:
     assert parser(html) == ((), 0)
+
+
+@pytest.mark.parametrize(
+    "parser", [parse_reb_page, parse_kodit_page], ids=["reb", "kodit"]
+)
+def test_table_list_parsers_reject_unrelated_tables(
+    parser: Callable[[bytes], tuple[tuple[object, ...], int]]
+) -> None:
+    with pytest.raises(ValueError, match="container"):
+        parser(b"<table><tr><td>unrelated layout</td></tr></table>")
 
 
 @pytest.mark.parametrize(
