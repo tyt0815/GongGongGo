@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import uvicorn
-from playwright.sync_api import Browser, Page, expect, sync_playwright
+from playwright.sync_api import Browser, Page, Response, expect, sync_playwright
 
 from src.domain import CrawledPost, CrawlSnapshot
 from src.news.domain import CrawledNewsItem, NewsCrawlSnapshot, NewsItemType
@@ -661,28 +661,49 @@ def test_news_filters_opens_and_dismisses(
     page.goto(live_server.base_url)
     page.get_by_role("button", name="뉴스/기관소식").click()
 
-    expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_be_visible()
-    expect(page.locator(".news-row", has_text="공공부문 AI 전환")).to_have_count(0)
+    news_list = page.locator("#news-list")
+    retained_row = page.locator(".news-row", has_text="공공부문 AI 전환")
 
-    page.get_by_role("button", name="최근 7일").click()
-    expect(page.locator(".news-row", has_text="공공부문 AI 전환")).to_be_visible()
+    def is_news_list_response(response: Response) -> bool:
+        return response.request.method == "GET" and "/api/news?" in response.url
+
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_be_visible()
+    expect(retained_row).to_have_count(0)
+
+    with page.expect_response(is_news_list_response):
+        page.get_by_role("button", name="최근 7일").click()
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_be_visible()
     expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_be_visible()
     expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_be_visible()
 
-    page.get_by_label("자료 종류").select_option("newspaper")
+    with page.expect_response(is_news_list_response):
+        page.get_by_label("자료 종류").select_option("newspaper")
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_have_count(0)
 
-    page.get_by_label("출처").select_option("hankyung")
+    with page.expect_response(is_news_list_response):
+        page.get_by_label("출처").select_option("hankyung")
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_have_count(0)
 
-    page.get_by_label("분류").select_option("IT")
+    with page.expect_response(is_news_list_response):
+        page.get_by_label("분류").select_option("IT")
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_have_count(0)
 
-    page.get_by_label("제목 검색").fill("AI")
+    with page.expect_response(is_news_list_response):
+        page.get_by_label("제목 검색").fill("AI")
+    expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_have_count(0)
 
-    row = page.locator(".news-row", has_text="공공부문 AI 전환")
+    row = retained_row
     expect(row).to_be_visible()
     expect(row.locator("a.news-title")).to_have_attribute("target", "_blank")
     row.get_by_role("button", name="처리 완료").click()
