@@ -59,7 +59,7 @@ def parse_mk_main_page(
 ) -> tuple[tuple[CrawledNewsItem, ...], int]:
     soup = BeautifulSoup(html, "html.parser")
     links = soup.select(
-        "a.news_item[data-section='headline'], a.news_item[data-section='main']"
+        "a[data-section='headline'], a.news_item[data-section='main']"
     )
     if not links:
         raise ValueError("MK main container is missing")
@@ -68,7 +68,15 @@ def parse_mk_main_page(
     malformed = 0
     for link in links:
         section = link.get("data-section")
-        title = _collapsed_text(link.select_one(".art_area h4"))
+        title_element = link.select_one(
+            ".art_area h4, h3.headline_tit, h3.news_tit"
+        )
+        if title_element is not None:
+            for badge in title_element.select(".t_badge"):
+                badge.decompose()
+        title = _collapsed_text(title_element)
+        if title is None and link.find("img") is not None:
+            continue
         url = _article_url(link)
         if title is None or url is None:
             malformed += 1

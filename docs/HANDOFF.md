@@ -1,12 +1,12 @@
 # GongGongGo 인수인계
 
-최종 갱신: 2026-08-20
+최종 갱신: 2026-08-25
 
 ## 현재 단계
 
-2026-08-03 전체 개선 설계가 구현되었습니다. 앱은 SQLite를 사용하고 서버 준비와 백그라운드 크롤링을 분리하며, 반응형 대시보드와 저장되는 실행·필터 설정을 제공합니다.
+2026-08-03 전체 개선 설계와 2026-08-25 뉴스 Inbox 설계가 구현되었습니다. 앱은 SQLite를 사용하고 서버 준비와 백그라운드 크롤링을 분리하며, 채용 상태 관리와 짧게 보관하는 뉴스·기관소식 Inbox를 제공합니다.
 
-승인된 인터페이스는 [전체 개선 설계](superpowers/specs/2026-08-03-gonggonggo-modernization-design.md)에 있습니다. 범위 변경은 없었으므로 `AGENTS.md`의 핵심 제약은 그대로 유효합니다.
+승인된 인터페이스는 [전체 개선 설계](superpowers/specs/2026-08-03-gonggonggo-modernization-design.md)와 [뉴스 Inbox 설계](superpowers/specs/2026-08-25-news-inbox-design.md)에 있습니다. 범위 변경은 없었으므로 `AGENTS.md`의 핵심 제약은 그대로 유효합니다.
 
 ## 실제 코드 구조
 
@@ -19,7 +19,13 @@
 - `src/crawler.py`: Async Playwright 카테고리 수집과 동시성 제한
 - `src/crawl_manager.py`: 단일 실행 가드, 진행 snapshot, 부분 실패와 저장 조정
 - `src/web.py`: FastAPI lifespan, HTML/static, 검증된 JSON API
-- `templates/index.html`, `static/app.css`, `static/app.js`: 반응형 대시보드와 설정 UI
+- `src/news/domain.py`, `registry.py`: 뉴스 자료·기간·실행 모델과 다섯 출처/TTL registry
+- `src/news/http.py`, `url_normalization.py`, `classification.py`: 제한된 목록 요청, URL 정규화, 한국부동산원 정기 통계 분류
+- `src/news/sources/`: 한국경제·매일경제 정적 HTML 목록과 한국부동산원·신용보증기금·한국가스공사 공식 목록 parser
+- `src/news/repository.py`: `news_items` 보관·필터·TTL 정리와 `news_dismissals` 임시 억제 트랜잭션
+- `src/news/manager.py`: 다섯 출처의 독립 병렬 실행, 출처별 실패 격리와 snapshot
+- `templates/index.html`, `static/app.css`, `static/app.js`: 기존 채용 대시보드와 설정 UI
+- `static/news.css`, `static/news.js`: 뉴스 전환, 필터·목록·처리 완료와 뉴스 전용 polling
 - `src/logging_config.py`, `src/runtime.py`: 날짜별 로그, 보존 정리, 선택적 브라우저 열기, 로컬 Uvicorn 실행
 - `ggg_startup.vbs`: 숨김 실행, `ggg_startup.bat`: 기존 스케줄러용 VBS 래퍼
 - `ggg_debug.bat`: `main.py --debug`으로 콘솔과 Playwright Chromium GUI를 함께 표시하는 디버그 실행
@@ -42,10 +48,15 @@
 - 설정 drawer는 저장된 값을 모두 읽은 뒤 열어, 로딩 중 사용자 입력이 늦은 응답에 덮이지 않게 합니다.
 - 넓은 화면은 현재 선택한 묶음의 두 lane만 표시하고, 좁은 화면은 네 상태 중 한 panel만 표시합니다.
 - 일반 및 숨김 실행의 크롤러는 headless 모드이며, `--debug` 실행에서만 실제 Chromium 창을 표시합니다.
+- 뉴스는 공식 목록에서 제목·링크·출처·통합/원본 분류·게시일시만 수집하며 기사 본문과 첨부파일을 요청하거나 저장하지 않습니다.
+- 한국경제와 매일경제는 `정치`, `경제`, `사회`, `IT`, `세계`, `주요뉴스`로 통합합니다. 세 기관은 기본 `보도자료`이며 한국부동산원의 명백한 정기 조사·동향 제목만 `정기 통계`입니다.
+- `news_items`는 URL 고유 항목과 최초 수집시각을 보관합니다. 신문 TTL은 7일, 기관 TTL은 30일이며 게시일이 없으면 최초 수집일을 기준으로 합니다.
+- `처리 완료`는 한 트랜잭션에서 `news_items` 행을 삭제하고 `news_dismissals`를 원래 TTL 경계까지만 upsert합니다. 억제 만료 뒤 재수집될 수 있으며 영구 차단이 아닙니다.
+- `CrawlManager`와 `NewsCrawlManager`는 실행 가드, 상태, 수동 시작과 실패를 공유하지 않습니다. lifespan은 둘을 각각 한 번 시작하고 완료를 기다리지 않으며, 종료 시 둘을 함께 기다립니다.
 
 ## 데이터와 안전한 작업 방법
 
-운영 파일은 `data/job_posts.json`과 런타임 `data/gonggonggo.db`입니다. 테스트는 항상 `tmp_path` 아래에 별도 JSON과 DB를 만들며 Naver에 접근하지 않는 fake를 사용합니다. 운영 상태 변경, 영구 삭제, 차단 해제 테스트에 운영 DB를 사용하지 마십시오.
+운영 파일은 `data/job_posts.json`과 런타임 `data/gonggonggo.db`입니다. 뉴스도 같은 DB 파일 안의 독립 `news_items`, `news_dismissals` 테이블을 사용하지만 채용 행을 갱신하지 않습니다. 테스트는 항상 `tmp_path` 아래에 별도 JSON과 DB를 만들며 Naver와 뉴스 출처에 접근하지 않는 fake를 사용합니다. 운영 상태 변경, 영구 삭제, 차단 해제, 뉴스 처리 완료 테스트에 운영 DB를 사용하지 마십시오.
 
 백업은 서버를 종료한 상태에서 JSON과 DB를 함께 복사합니다. 실행 중에는 WAL sidecar가 존재할 수 있으므로 DB 본체만 복사하지 않습니다. `.gitignore`는 DB, DB sidecar, 로그, `.superpowers/` 작업 산출물을 제외합니다.
 
@@ -67,10 +78,15 @@ git diff --check
 - 실행 단위 저장 실패 표시와 빠른 수집 완료 후 버튼/목록 갱신
 - 신규 공고 상단 정렬, `NEW` 배지, 제목 링크 유지, 확인·상태 이동 시 해제
 - 카드 내부 버튼, 구조화·fallback 제목, 긴 직무 tooltip, 설정 drawer, 진행 상태와 한국어 렌더링
+- 뉴스 기간·자료 종류·출처·분류·제목 필터, 새 탭 원문과 처리 완료 후 행 제거
+- 390px 뉴스 행의 가로 overflow 방지, 탭 왕복 뒤 채용 상태 panel 유지
+- 뉴스 수집이 진행 중이어도 채용 수동 수집 버튼을 사용할 수 있는 manager 독립성
 
-2026-08-20 Python 3.12.10 전체 실행 결과는 경고를 오류로 처리한 상태에서 `112 passed, 0 warnings`입니다. Starlette `TestClient`는 개발 의존성 `httpx2`를 사용하며 별도 Node.js 테스트 전제는 없습니다.
+2026-08-25 Python 3.12.10 전체 실행 결과는 `206 passed, 0 warnings`입니다. 브라우저 E2E 10개와 다섯 출처 fixture parser 테스트를 포함하며, `node --check static/app.js`와 `node --check static/news.js`도 통과했습니다. 자동화 테스트는 모두 오프라인이고 임시 DB를 사용합니다.
 
-안전한 smoke에서는 실제 `create_app`과 Uvicorn을 임시 loopback 포트에서 실행하고, 임시 JSON 3건 마이그레이션, `/health` 200, 백그라운드 진행 `1/4`, 상태 변경과 재시작 설정 유지를 확인했습니다. `ggg_debug.bat`의 고정 포트 `8000`은 기존 구 UI 서버(PID 23684)가 이미 점유하고 `/health`에 404를 반환해 이번 세션에서는 실행하지 않았습니다. 사용자 프로세스를 임의로 종료하지 않았으며, 해당 서버를 정상 종료한 뒤 debug BAT의 운영 데이터 read-only smoke와 로그 생성을 별도로 확인해야 합니다.
+2026-08-25 안전한 시작 smoke는 실제 `create_app`과 Uvicorn을 임시 DB·JSON 및 임의 loopback 포트에서 실행했습니다. 채용과 뉴스 manager가 모두 실행 중인 상태에서 `/health` 200, DB 생성, 실제 socket bind `127.0.0.1`, 정상 종료를 확인했습니다. 운영 DB·JSON과 로그는 사용하지 않았습니다.
+
+같은 날 DB를 사용하지 않는 공식 목록 read-only smoke 결과는 `hankyung 60 None`, `mk 54 None`, `reb 100 None`, `kodit 100 None`, `kogas 100 None`입니다. 첫 실행에서 발견한 한국경제 URL suffix 변경과 매일경제 headline markup 변경은 최소 fixture 회귀 테스트와 함께 수정했습니다. 이 smoke는 기사 본문을 열거나 저장하지 않았습니다.
 
 Task 10 수행 중 E2E가 찾아낸 세 회귀도 테스트로 고정되어 있습니다.
 
@@ -81,7 +97,7 @@ Task 10 수행 중 E2E가 찾아낸 세 회귀도 테스트로 고정되어 있�
 ## 남은 제한
 
 - 외부 접속, 인증, 반복 스케줄 수집, 알림, 별도 작업 큐는 구현하지 않았습니다.
-- Naver Cafe 네트워크와 DOM 변경은 앱이 통제할 수 없습니다. 실패 카테고리는 부분 실패로 남고 수동 재시도가 필요합니다.
+- Naver Cafe와 다섯 공식 뉴스 목록의 네트워크·DOM 변경은 앱이 통제할 수 없습니다. 채용 실패 카테고리는 부분 실패로 남고 수동 재시도가 필요하며, 뉴스 실패는 출처별 오류로 격리됩니다.
 - Playwright Chromium이 설치되어 있어야 실제 수집과 브라우저 E2E가 동작합니다.
 - `127.0.0.1:8000`을 다른 프로세스가 사용 중이면 실행할 수 없습니다.
 - `ggg_startup.fish`는 기존 파일로 남아 있으며 이번 Windows 시작 경로 검증 대상이 아닙니다.

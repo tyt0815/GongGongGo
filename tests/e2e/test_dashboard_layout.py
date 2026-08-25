@@ -7,16 +7,19 @@ import socket
 import threading
 import time
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 import pytest
 import uvicorn
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from src.domain import CrawledPost, CrawlSnapshot
-from src.news.domain import NewsCrawlSnapshot
+from src.news.domain import CrawledNewsItem, NewsCrawlSnapshot, NewsItemType
+from src.news.repository import NewsRepository
 from src.repository import Repository
 from src.web import create_app
 
@@ -63,6 +66,39 @@ class IdleNewsManager:
         return None
 
 
+class IdleJobManager:
+    def start(self, trigger: str, categories: tuple[str, ...] | None = None) -> bool:
+        return True
+
+    def snapshot(self) -> CrawlSnapshot:
+        return CrawlSnapshot()
+
+    async def wait(self) -> None:
+        return None
+
+
+class BlockedNewsManager:
+    def __init__(self) -> None:
+        self.running = False
+
+    def start(self, trigger: str) -> bool:
+        if self.running:
+            return False
+        self.running = True
+        return True
+
+    def snapshot(self) -> NewsCrawlSnapshot:
+        return NewsCrawlSnapshot(
+            running=self.running,
+            completed_sources=2,
+            total_sources=5,
+            new_count=3,
+        )
+
+    async def wait(self) -> None:
+        return None
+
+
 class RetryFakeManager:
     """No-network manager that completes one accepted slash-category retry."""
 
@@ -102,10 +138,12 @@ class LiveServer:
         db_path: Path,
         json_path: Path,
         manager_factory: Callable[[], object] | None = None,
+        news_manager_factory: Callable[[], object] | None = None,
     ) -> None:
         self.db_path = db_path
         self.json_path = json_path
         self.manager_factory = manager_factory or BlockedFakeManager
+        self.news_manager_factory = news_manager_factory or IdleNewsManager
         self.base_url = ""
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -119,7 +157,7 @@ class LiveServer:
             db_path=self.db_path,
             json_path=self.json_path,
             manager_factory=lambda _repository: self.manager_factory(),
-            news_manager_factory=lambda _repository: IdleNewsManager(),
+            news_manager_factory=lambda _repository: self.news_manager_factory(),
         )
 
         @app.middleware("http")
@@ -189,6 +227,7 @@ def live_server(tmp_path: Path) -> LiveServer:
     server = LiveServer(tmp_path / "gonggonggo.db", json_path)
     try:
         server.start()
+        _seed_news(server.db_path)
         yield server
     finally:
         server.stop()
@@ -557,6 +596,88 @@ def test_keyword_changes_apply_immediately_and_persist_after_restart(
         restarted_page.close()
 
 
+def test_news_filters_opens_and_dismisses(
+    page: Page, live_server: LiveServer
+) -> None:
+    """Catches broken news filter labels, external links, or completed-item removal."""
+    page.goto(live_server.base_url)
+    page.get_by_role("button", name="뉴스/기관소식").click()
+    page.get_by_role("button", name="최근 7일").click()
+    page.get_by_label("자료 종류").select_option("newspaper")
+    page.get_by_label("출처").select_option("hankyung")
+    page.get_by_label("분류").select_option("IT")
+    page.get_by_label("제목 검색").fill("AI")
+
+    row = page.locator(".news-row", has_text="공공부문 AI 전환")
+    expect(row).to_be_visible()
+    expect(row.locator("a.news-title")).to_have_attribute("target", "_blank")
+    row.get_by_role("button", name="처리 완료").click()
+    expect(row).to_have_count(0)
+
+
+def test_news_mobile_row_stays_in_viewport_and_job_panel_is_restored(
+    page: Page, live_server: LiveServer
+) -> None:
+    """Catches mobile horizontal overflow or job status loss across primary tabs."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(live_server.base_url)
+    page.locator(".status-tabs").get_by_role(
+        "button", name="지원 예정", exact=True
+    ).click()
+    expect(page.locator('[data-status-panel="planned"]:visible')).to_have_count(1)
+
+    page.get_by_role("button", name="뉴스/기관소식").click()
+    page.get_by_role("button", name="최근 7일").click()
+    row = page.locator(".news-row", has_text="공공부문 AI 전환")
+    expect(row).to_be_visible()
+    metrics = row.evaluate(
+        """element => {
+            const bounds = element.getBoundingClientRect();
+            return {
+                left: bounds.left,
+                right: bounds.right,
+                viewportWidth: window.innerWidth,
+                documentWidth: document.documentElement.scrollWidth,
+            };
+        }"""
+    )
+    assert metrics["left"] >= 0, metrics
+    assert metrics["right"] <= metrics["viewportWidth"], metrics
+    assert metrics["documentWidth"] <= metrics["viewportWidth"], metrics
+
+    page.get_by_role("button", name="채용공고").click()
+    expect(page.locator('[data-status-panel="planned"]:visible')).to_have_count(1)
+
+
+def test_blocked_news_crawl_keeps_job_crawl_available(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Catches news crawl state leaking into the independent job crawl control."""
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    server = LiveServer(
+        tmp_path / "gonggonggo.db",
+        json_path,
+        manager_factory=IdleJobManager,
+        news_manager_factory=BlockedNewsManager,
+    )
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    try:
+        server.start()
+        page.goto(server.base_url)
+        expect(page.locator("#crawl-button")).to_be_enabled()
+
+        page.get_by_role("button", name="뉴스/기관소식").click()
+        expect(page.locator("#news-crawl-status")).to_contain_text("수집 2/5")
+        expect(page.locator("#news-crawl-button")).to_be_disabled()
+
+        page.get_by_role("button", name="채용공고").click()
+        expect(page.locator("#crawl-button")).to_be_enabled()
+    finally:
+        page.close()
+        server.stop()
+
+
 def _legacy_posts() -> list[dict[str, str]]:
     return [
         {
@@ -581,6 +702,45 @@ def _legacy_posts() -> list[dict[str, str]]:
             "state": "완료",
         },
     ]
+
+
+def _seed_news(db_path: Path) -> None:
+    now = datetime.now(ZoneInfo("Asia/Seoul"))
+    NewsRepository(db_path).upsert_items(
+        [
+            CrawledNewsItem(
+                item_type=NewsItemType.NEWSPAPER,
+                source="hankyung",
+                source_name="한국경제",
+                category="IT",
+                source_category="IT·과학",
+                title="공공부문 AI 전환 가속",
+                url="https://example.test/news/public-ai",
+                published_at=now - timedelta(days=1),
+            ),
+            CrawledNewsItem(
+                item_type=NewsItemType.NEWSPAPER,
+                source="mk",
+                source_name="매일경제",
+                category="경제",
+                source_category="경제",
+                title="지역경제 투자 확대",
+                url="https://example.test/news/local-economy",
+                published_at=now - timedelta(days=2),
+            ),
+            CrawledNewsItem(
+                item_type=NewsItemType.INSTITUTION,
+                source="reb",
+                source_name="한국부동산원",
+                category="보도자료",
+                source_category=None,
+                title="공공 데이터 개방 확대",
+                url="https://example.test/news/public-data",
+                published_at=now,
+            ),
+        ],
+        now=now,
+    )
 
 
 def _free_port() -> int:

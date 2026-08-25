@@ -119,7 +119,7 @@
     const content = document.createElement("div");
     content.className = "news-content";
     const title = document.createElement("h2");
-    title.append(createExternalLink(item.title, item.url, "news-title-link"));
+    title.append(createExternalLink(item.title, item.url, "news-title news-title-link"));
     content.append(title, createExternalLink("원문 보기", item.url, "news-original-link"));
     row.append(content);
 

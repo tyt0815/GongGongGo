@@ -14,11 +14,11 @@ from ..url_normalization import normalize_url
 _SEOUL = ZoneInfo("Asia/Seoul")
 _BASE_URL = "https://www.hankyung.com"
 _SECTIONS = (
-    ("정치", "정치", f"{_BASE_URL}/all-news/politics"),
-    ("경제", "경제", f"{_BASE_URL}/all-news/economy"),
-    ("사회", "사회", f"{_BASE_URL}/all-news/society"),
-    ("IT", "IT·과학", f"{_BASE_URL}/all-news/it"),
-    ("세계", "국제", f"{_BASE_URL}/all-news/international"),
+    ("정치", "정치", f"{_BASE_URL}/all-news-politics"),
+    ("경제", "경제", f"{_BASE_URL}/all-news-economy"),
+    ("사회", "사회", f"{_BASE_URL}/all-news-society"),
+    ("IT", "IT·과학", f"{_BASE_URL}/all-news-it"),
+    ("세계", "국제", f"{_BASE_URL}/all-news-international"),
     ("주요뉴스", "전체뉴스", f"{_BASE_URL}/all-news"),
 )
 

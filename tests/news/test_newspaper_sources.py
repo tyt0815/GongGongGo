@@ -106,6 +106,24 @@ def test_mk_main_parser_keeps_curated_items_with_discovery_fallback(
     assert malformed == 0
 
 
+def test_mk_main_parser_accepts_current_headline_markup(
+    fixtures: Callable[[str], bytes],
+) -> None:
+    items, malformed = parse_mk_main_page(
+        fixtures("mk_main_current.html"), "주요뉴스"
+    )
+
+    assert [item.title for item in items] == [
+        "연금 수령액 절반은 월 50만원 미만",
+        "공공부문 AI 전환 가속",
+    ]
+    assert [item.url for item in items] == [
+        "https://www.mk.co.kr/news/economy/12135757",
+        "https://www.mk.co.kr/news/it/12135882",
+    ]
+    assert malformed == 0
+
+
 def test_mk_main_parser_rejects_a_page_without_curated_sections() -> None:
     with pytest.raises(ValueError, match="main container"):
         parse_mk_main_page(
@@ -166,11 +184,11 @@ def test_specific_categories_are_fetched_before_main(
 
     assert result.error is None
     assert calls == [
-        "https://www.hankyung.com/all-news/politics",
-        "https://www.hankyung.com/all-news/economy",
-        "https://www.hankyung.com/all-news/society",
-        "https://www.hankyung.com/all-news/it",
-        "https://www.hankyung.com/all-news/international",
+        "https://www.hankyung.com/all-news-politics",
+        "https://www.hankyung.com/all-news-economy",
+        "https://www.hankyung.com/all-news-society",
+        "https://www.hankyung.com/all-news-it",
+        "https://www.hankyung.com/all-news-international",
         "https://www.hankyung.com/all-news",
     ]
 
