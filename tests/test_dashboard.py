@@ -81,6 +81,20 @@ def test_dashboard_serves_external_assets_and_operational_controls(client) -> No
 
     assert 'href="/static/app.css"' in html
     assert 'src="/static/app.js"' in html
+    assert 'href="/static/news.css"' in html
+    assert 'src="/static/news.js"' in html
+    assert 'data-primary-tab="jobs"' in html
+    assert 'data-primary-tab="news"' in html
+    assert 'id="job-view"' in html
+    assert 'id="news-view"' in html
+    assert 'data-news-period="today"' in html
+    assert 'data-news-period="30d"' in html
+    assert 'id="news-type-filter"' in html
+    assert 'id="news-source-filter"' in html
+    assert 'id="news-category-filter"' in html
+    assert 'id="news-search-input"' in html
+    assert 'id="news-crawl-button"' in html
+    assert 'id="news-list"' in html
     assert 'data-view-group="active"' in html
     assert 'data-view-group="archive"' in html
     assert 'id="settings-drawer"' in html
@@ -96,6 +110,25 @@ def test_dashboard_serves_external_assets_and_operational_controls(client) -> No
 
     assert client.get("/static/app.css").status_code == 200
     assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/news.css").status_code == 200
+    assert client.get("/static/news.js").status_code == 200
+
+
+def test_news_client_contract_keeps_news_actions_isolated_and_safe() -> None:
+    """Catches a news Inbox that leaks job controls or unsafe external links."""
+    script = (Path(__file__).parents[1] / "static" / "news.js").read_text(encoding="utf-8")
+
+    assert 'target = "_blank"' in script
+    assert 'rel = "noopener noreferrer"' in script
+    assert 'method: "DELETE"' in script
+    assert 'await request(`/api/news/${item.id}`, { method: "DELETE" });' in script
+    assert script.index('await request(`/api/news/${item.id}`, { method: "DELETE" });') < script.index(
+        "state.items = state.items.filter((current) => current.id !== item.id);"
+    )
+    assert "if (snapshot?.running === false) {" in script
+    assert "await refreshNews();" in script
+    assert '"/api/crawl/start"' not in script
+    assert 'byId("crawl-button")' not in script
 
 
 def test_post_api_exposes_structured_fields_and_preserves_original_title(

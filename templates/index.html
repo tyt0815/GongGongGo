@@ -5,9 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>공공고 - 채용 공고</title>
     <link rel="stylesheet" href="/static/app.css">
+    <link rel="stylesheet" href="/static/news.css">
 </head>
 <body>
     <main class="dashboard-shell">
+        <nav class="primary-tabs" aria-label="기본 보기">
+            <button type="button" class="selected" data-primary-tab="jobs" aria-pressed="true">채용공고</button>
+            <button type="button" data-primary-tab="news" aria-pressed="false">뉴스/기관소식</button>
+        </nav>
+
+        <section id="job-view">
         <header class="app-header">
             <div>
                 <p class="eyebrow">GONGGONGGO</p>
@@ -81,6 +88,70 @@
                 <div class="card-list" data-post-list="excluded"></div>
             </section>
         </section>
+        </section>
+
+        <section id="news-view" hidden aria-label="뉴스 및 기관소식">
+            <header class="app-header news-header">
+                <div>
+                    <p class="eyebrow">GONGGONGGO</p>
+                    <h1>뉴스/기관소식</h1>
+                </div>
+                <div class="header-actions">
+                    <button id="news-crawl-button" class="primary-button" type="button" disabled>새로 수집</button>
+                </div>
+            </header>
+
+            <section class="crawl-region news-crawl-region" aria-live="polite">
+                <span id="news-crawl-status">수집 상태를 확인하는 중입니다.</span>
+                <span id="news-crawl-errors"></span>
+            </section>
+
+            <section class="news-toolbar" aria-label="뉴스 필터">
+                <div class="news-periods" role="group" aria-label="기간">
+                    <button type="button" class="selected" data-news-period="today" aria-pressed="true">오늘</button>
+                    <button type="button" data-news-period="yesterday" aria-pressed="false">어제</button>
+                    <button type="button" data-news-period="3d" aria-pressed="false">3일</button>
+                    <button type="button" data-news-period="7d" aria-pressed="false">7일</button>
+                    <button type="button" data-news-period="30d" aria-pressed="false">30일</button>
+                </div>
+                <label>유형
+                    <select id="news-type-filter">
+                        <option value="">전체 유형</option>
+                        <option value="newspaper">뉴스</option>
+                        <option value="institution">기관소식</option>
+                    </select>
+                </label>
+                <label>출처
+                    <select id="news-source-filter">
+                        <option value="">전체 출처</option>
+                        <option value="hankyung">한국경제</option>
+                        <option value="mk">매일경제</option>
+                        <option value="reb">한국부동산원</option>
+                        <option value="kodit">신용보증기금</option>
+                        <option value="kogas">한국가스공사</option>
+                    </select>
+                </label>
+                <label>카테고리
+                    <select id="news-category-filter">
+                        <option value="">전체 카테고리</option>
+                        <option value="주요뉴스">주요뉴스</option>
+                        <option value="정치">정치</option>
+                        <option value="경제">경제</option>
+                        <option value="사회">사회</option>
+                        <option value="IT">IT</option>
+                        <option value="증권">증권</option>
+                        <option value="보도자료">보도자료</option>
+                        <option value="정기 공시">정기 공시</option>
+                    </select>
+                </label>
+                <label class="news-search-label">제목 검색
+                    <input id="news-search-input" type="search" placeholder="제목 검색">
+                </label>
+            </section>
+
+            <p id="news-errors" class="news-error-message" role="alert" hidden></p>
+            <section id="news-list" class="news-list" aria-live="polite" aria-busy="false"></section>
+        </section>
     </main>
 
     <aside id="settings-drawer" class="settings-drawer" aria-label="설정" hidden>
@@ -109,5 +180,6 @@
         </section>
     </noscript>
     <script src="/static/app.js" defer></script>
+    <script src="/static/news.js" defer></script>
 </body>
 </html>
