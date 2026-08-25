@@ -259,7 +259,6 @@
   async function initializeNews() {
     if (state.loaded) return;
     state.loaded = true;
-    await refreshNews();
     try {
       const snapshot = await request("/api/news/crawl/status");
       renderNewsCrawl(snapshot);
@@ -274,6 +273,7 @@
       newsCrawlButton.disabled = false;
       showCrawlError(error.message);
     }
+    await refreshNews();
   }
 
   function selectPrimaryTab(tab) {

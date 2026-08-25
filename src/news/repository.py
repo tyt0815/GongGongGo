@@ -86,6 +86,8 @@ class NewsRepository:
             }
             values: list[tuple[object, ...]] = []
             for normalized_url, news_item in deduplicated.items():
+                if not _is_within_source_ttl(news_item, now_in_seoul.date()):
+                    continue
                 if normalized_url in active_dismissals:
                     suppressed_count += 1
                     continue
@@ -232,6 +234,16 @@ def _seoul_datetime(value: datetime | None) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("datetime must be timezone-aware")
     return value.astimezone(SEOUL)
+
+
+def _is_within_source_ttl(news_item: CrawledNewsItem, today: date) -> bool:
+    effective_date = (
+        today
+        if news_item.published_at is None
+        else _seoul_datetime(news_item.published_at).date()
+    )
+    cutoff = today - timedelta(days=SOURCES[news_item.source].ttl_days - 1)
+    return cutoff <= effective_date <= today
 
 
 def _datetime_to_seoul_iso(value: datetime | None) -> str | None:

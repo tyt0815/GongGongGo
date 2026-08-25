@@ -72,29 +72,88 @@ def test_upsert_normalizes_deduplicates_and_prefers_specific_category(
 def test_cleanup_respects_inclusive_ttls(
     repository: NewsRepository, now: datetime
 ) -> None:
-    repository.upsert_items(
+    items = [
+        item("https://x.test/n-old", published_at=now - timedelta(days=7)),
+        item("https://x.test/n-keep", published_at=now - timedelta(days=6)),
+        item(
+            "https://x.test/i-old",
+            item_type=NewsItemType.INSTITUTION,
+            source="reb",
+            source_name="한국부동산원",
+            published_at=now - timedelta(days=30),
+        ),
+        item(
+            "https://x.test/i-keep",
+            item_type=NewsItemType.INSTITUTION,
+            source="reb",
+            source_name="한국부동산원",
+            published_at=now - timedelta(days=29),
+        ),
+    ]
+    for crawled_item in items:
+        repository.upsert_items([crawled_item], now=crawled_item.published_at)
+
+    assert repository.cleanup(now=now).item_count == 2
+
+
+@pytest.mark.parametrize(
+    ("source", "item_type", "source_name", "ttl_days"),
+    [
+        ("hankyung", NewsItemType.NEWSPAPER, "한국경제", 7),
+        ("reb", NewsItemType.INSTITUTION, "한국부동산원", 30),
+    ],
+)
+def test_upsert_enforces_inclusive_source_ttl_at_write_time(
+    repository: NewsRepository,
+    now: datetime,
+    source: str,
+    item_type: NewsItemType,
+    source_name: str,
+    ttl_days: int,
+) -> None:
+    stats = repository.upsert_items(
         [
-            item("https://x.test/n-old", published_at=now - timedelta(days=7)),
-            item("https://x.test/n-keep", published_at=now - timedelta(days=6)),
             item(
-                "https://x.test/i-old",
-                item_type=NewsItemType.INSTITUTION,
-                source="reb",
-                source_name="한국부동산원",
-                published_at=now - timedelta(days=30),
+                f"https://x.test/{source}-boundary",
+                source=source,
+                item_type=item_type,
+                source_name=source_name,
+                published_at=now - timedelta(days=ttl_days - 1),
             ),
             item(
-                "https://x.test/i-keep",
-                item_type=NewsItemType.INSTITUTION,
-                source="reb",
-                source_name="한국부동산원",
-                published_at=now - timedelta(days=29),
+                f"https://x.test/{source}-expired",
+                source=source,
+                item_type=item_type,
+                source_name=source_name,
+                published_at=now - timedelta(days=ttl_days),
             ),
         ],
         now=now,
     )
 
-    assert repository.cleanup(now=now).item_count == 2
+    rows = repository.list_items(NewsPeriod.THIRTY_DAYS, today=now.date())
+
+    assert stats == SaveStats(new_count=1)
+    assert [row.url for row in rows] == [f"https://x.test/{source}-boundary"]
+
+
+def test_upsert_rejects_future_publication_dates_but_keeps_discovery_fallback(
+    repository: NewsRepository, now: datetime
+) -> None:
+    stats = repository.upsert_items(
+        [
+            item("https://x.test/future", published_at=now + timedelta(days=1)),
+            item("https://x.test/discovered", published_at=None),
+        ],
+        now=now,
+    )
+
+    rows = repository.list_items(NewsPeriod.TODAY, today=now.date())
+
+    assert stats == SaveStats(new_count=1)
+    assert [row.url for row in rows] == ["https://x.test/discovered"]
+    assert rows[0].published_at is None
+    assert rows[0].discovered_at == now
 
 
 def test_dismissal_expires_at_original_ttl_boundary(
@@ -122,11 +181,10 @@ def test_dismissal_expires_at_original_ttl_boundary(
     expires_at = datetime(2026, 8, 27, tzinfo=SEOUL)
     repository.cleanup(now=expires_at)
 
-    assert (
-        repository.upsert_items([item(row.url, published_at=published)], now=expires_at)
-        .new_count
-        == 1
-    )
+    assert repository.upsert_items(
+        [item(row.url, published_at=published)], now=expires_at
+    ) == SaveStats()
+    assert repository.list_items(NewsPeriod.SEVEN_DAYS, today=expires_at.date()) == []
 
 
 def test_upsert_preserves_discovery_fills_publication_and_never_downgrades_category(
@@ -203,7 +261,13 @@ def test_list_items_uses_inclusive_seoul_calendar_periods(
 ) -> None:
     repository.upsert_items(
         [
-            item(f"https://x.test/day-{days}", published_at=now - timedelta(days=days))
+            item(
+                f"https://x.test/day-{days}",
+                item_type=NewsItemType.INSTITUTION,
+                source="reb",
+                source_name="한국부동산원",
+                published_at=now - timedelta(days=days),
+            )
             for days in (0, 1, 2, 6, 29)
         ],
         now=now,

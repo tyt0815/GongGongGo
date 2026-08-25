@@ -1,11 +1,12 @@
 from collections.abc import Callable
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from src.news import http
-from src.news.sources import hankyung, mk
+from src.news.sources import hankyung, kodit, kogas, mk, reb
 from src.news.sources.hankyung import parse_hankyung_page
 from src.news.sources.mk import parse_mk_main_page, parse_mk_page
 
@@ -147,6 +148,35 @@ def test_list_parsers_accept_empty_expected_containers(
 
 
 @pytest.mark.parametrize(
+    ("parser", "html"),
+    [
+        (
+            parse_hankyung_page,
+            b"<ul class='allnews-list'><li><h2 class='news-tit'>"
+            b"<a href='https://www.hankyung.com.evil.test/article/1'>offsite</a>"
+            b"</h2></li></ul>",
+        ),
+        (
+            parse_mk_page,
+            b"<ul id='list_area'><li class='article_list'>"
+            b"<a class='news_item' href='https://evil.test/news/1'>"
+            b"<div class='art_area'><h4>offsite</h4></div></a></li></ul>",
+        ),
+        (
+            parse_hankyung_page,
+            b"<ul class='allnews-list'><li><h2 class='news-tit'>"
+            b"<a href='https://www.hankyung.com:not-a-port/article/1'>bad port</a>"
+            b"</h2></li></ul>",
+        ),
+    ],
+)
+def test_newspaper_parsers_reject_unapproved_or_malformed_article_urls(
+    parser: Callable[[bytes, str], tuple[tuple[object, ...], int]], html: bytes
+) -> None:
+    assert parser(html, "IT") == ((), 1)
+
+
+@pytest.mark.parametrize(
     ("crawl", "source"),
     [(hankyung.crawl, "hankyung"), (mk.crawl, "mk")],
 )
@@ -172,6 +202,36 @@ def test_crawl_isolates_fetch_exceptions(crawl: Callable[..., object], source: s
     assert result.items == ()
     assert result.error is not None
     assert "offline" in result.error
+
+
+@pytest.mark.parametrize(
+    ("crawl", "source"),
+    [
+        (hankyung.crawl, "hankyung"),
+        (mk.crawl, "mk"),
+        (reb.crawl, "reb"),
+        (kodit.crawl, "kodit"),
+        (kogas.crawl, "kogas"),
+    ],
+)
+def test_source_crawl_logs_traceback_and_returns_concise_error(
+    crawl: Callable[..., object],
+    source: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fail_fetch(_url: str) -> bytes:
+        raise RuntimeError("list unavailable")
+
+    with caplog.at_level(logging.ERROR, logger=crawl.__module__):
+        result = crawl(fetcher=fail_fetch)
+
+    assert result.source == source
+    assert result.error == "RuntimeError: list unavailable"
+    source_records = [
+        record for record in caplog.records if record.name == crawl.__module__
+    ]
+    assert len(source_records) == 1
+    assert source_records[0].exc_info is not None
 
 
 def test_specific_categories_are_fetched_before_main(

@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime
+import logging
 import re
 from urllib.parse import urljoin, urlsplit
 from zoneinfo import ZoneInfo
@@ -9,6 +10,9 @@ from bs4 import BeautifulSoup
 from ..domain import CrawledNewsItem, NewsItemType, SourceResult
 from ..http import fetch_html
 from ..url_normalization import normalize_url
+
+
+logger = logging.getLogger(__name__)
 
 
 _SEOUL = ZoneInfo("Asia/Seoul")
@@ -108,6 +112,7 @@ def crawl(fetcher: Callable[[str], bytes] = fetch_html) -> SourceResult:
         items.extend(page_items)
         malformed += page_malformed
     except Exception as error:
+        logger.exception("News source crawl failed: source=mk")
         return SourceResult("mk", error=f"{type(error).__name__}: {error}")
     return SourceResult("mk", tuple(items), malformed)
 
@@ -134,9 +139,22 @@ def _article_url(link: object) -> str | None:
         return None
     absolute_url = urljoin(_BASE_URL, href)
     parsed = urlsplit(absolute_url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
+    try:
+        parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname is None
+        or not _is_approved_host(parsed.hostname, "mk.co.kr")
+    ):
         return None
     return normalize_url(absolute_url)
+
+
+def _is_approved_host(hostname: str, domain: str) -> bool:
+    host = hostname.casefold()
+    return host == domain or host.endswith(f".{domain}")
 
 
 def _parse_published_at(values: list[object]) -> datetime | None:

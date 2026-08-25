@@ -13,6 +13,7 @@ from src.news.repository import NewsRepository
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
+CURRENT_NOW = datetime.now(SEOUL)
 
 
 @pytest.fixture
@@ -31,7 +32,7 @@ def item(source: str, url: str) -> CrawledNewsItem:
         source_category=None,
         title=f"{source} article",
         url=url,
-        published_at=datetime(2026, 8, 25, 12, tzinfo=SEOUL),
+        published_at=CURRENT_NOW,
     )
 
 
@@ -53,9 +54,12 @@ async def test_partial_failure_saves_peers_and_rejects_duplicate_start(
     state = manager.snapshot()
     assert (state.completed_sources, state.new_count) == (2, 1)
     assert state.source_errors == {"mk": "selector missing"}
-    assert [record.url for record in repository.list_items(NewsPeriod.TODAY)] == [
-        "https://x.test/a"
-    ]
+    assert [
+        record.url
+        for record in repository.list_items(
+            NewsPeriod.TODAY, today=CURRENT_NOW.date()
+        )
+    ] == ["https://x.test/a"]
 
 
 @pytest.mark.asyncio
@@ -215,9 +219,12 @@ async def test_save_failure_is_isolated_to_its_source(
     state = manager.snapshot()
     assert (state.completed_sources, state.new_count) == (2, 1)
     assert state.source_errors == {"mk": "save failed"}
-    assert [record.url for record in repository.list_items(NewsPeriod.TODAY)] == [
-        "https://x.test/saved"
-    ]
+    assert [
+        record.url
+        for record in repository.list_items(
+            NewsPeriod.TODAY, today=CURRENT_NOW.date()
+        )
+    ] == ["https://x.test/saved"]
 
 
 @pytest.mark.asyncio
@@ -227,9 +234,10 @@ async def test_snapshot_totals_include_cleanup_and_save_statistics(
     from src.news.manager import NewsCrawlManager
 
     old_item = item("hankyung", "https://x.test/expired")
-    repository.upsert_items(
-        [replace(old_item, published_at=old_item.published_at - timedelta(days=8))]
+    expired_item = replace(
+        old_item, published_at=old_item.published_at - timedelta(days=8)
     )
+    repository.upsert_items([expired_item], now=expired_item.published_at)
     duplicate_url = "https://x.test/duplicate"
     manager = NewsCrawlManager(
         repository,

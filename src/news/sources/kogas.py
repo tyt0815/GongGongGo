@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
+import logging
 import re
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,9 @@ from bs4 import BeautifulSoup
 from ..domain import CrawledNewsItem, NewsItemType, SourceResult
 from ..http import fetch_html
 from ..url_normalization import normalize_url
+
+
+logger = logging.getLogger(__name__)
 
 
 _SEOUL = ZoneInfo("Asia/Seoul")
@@ -71,6 +75,7 @@ def crawl(
             ):
                 break
     except Exception as error:
+        logger.exception("News source crawl failed: source=kogas")
         return SourceResult("kogas", error=f"{type(error).__name__}: {error}")
     return SourceResult("kogas", tuple(items), malformed)
 
@@ -96,7 +101,7 @@ def _collapsed_text(element: object) -> str | None:
 def _parse_published_at(value: str | None) -> datetime | None:
     if value is None:
         return None
-    match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})\.?", value)
+    match = re.search(r"(\d{4})[.-](\d{1,2})[.-](\d{1,2})\.?", value)
     if match is None:
         return None
     try:

@@ -23,10 +23,7 @@ def normalize_url(value: str) -> str:
             userinfo += f":{parsed.password}"
         userinfo += "@"
 
-    try:
-        port = parsed.port
-    except ValueError:
-        port = None
+    port = parsed.port
     default_port = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
     netloc = f"{userinfo}{host}" if port is None or default_port else f"{userinfo}{host}:{port}"
 

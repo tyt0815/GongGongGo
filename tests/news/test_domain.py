@@ -37,12 +37,24 @@ def test_url_normalization_is_conservative() -> None:
     assert normalize_url("https://example.com/a/") == "https://example.com/a"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com:not-a-port/a",
+        "https://example.com:65536/a",
+    ],
+)
+def test_url_normalization_rejects_invalid_ports(url: str) -> None:
+    with pytest.raises(ValueError, match="Port"):
+        normalize_url(url)
+
+
 def test_reb_classifier_is_narrow() -> None:
     assert classify_institution_title("주간아파트가격동향(20260817기준)") == "정기 통계"
     assert classify_institution_title("26.7월 전국주택가격동향") == "정기 통계"
     assert classify_institution_title("상업용부동산 임대동향조사 결과") == "정기 통계"
     assert classify_institution_title("부동산 거래가격 거짓신고 집중 운영") == "보도자료"
-    assert classify_institution_title("상업용부동산 임대동향") == "보도자료"
+    assert classify_institution_title("상업용부동산 임대동향") == "정기 통계"
     assert classify_institution_title("  주간아파트가격동향\n(20260817기준)  ") == "정기 통계"
 
 

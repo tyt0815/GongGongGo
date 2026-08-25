@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
+import logging
 import re
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,9 @@ from bs4 import BeautifulSoup
 from ..domain import CrawledNewsItem, NewsItemType, SourceResult
 from ..http import fetch_html
 from ..url_normalization import normalize_url
+
+
+logger = logging.getLogger(__name__)
 
 
 _SEOUL = ZoneInfo("Asia/Seoul")
@@ -42,7 +46,7 @@ def parse_kodit_page(html: bytes) -> tuple[tuple[CrawledNewsItem, ...], int]:
                 url=normalize_url(
                     f"{_BASE_URL}/kodit/na/ntt/selectNttInfo.do?bbsId=47&mi=2639&nttSn={identifier}"
                 ),
-                published_at=_parse_published_at(_date_cell(row)),
+                published_at=_parse_published_at(_date_cell(link)),
             )
         )
     return tuple(items), malformed
@@ -71,6 +75,7 @@ def crawl(
             ):
                 break
     except Exception as error:
+        logger.exception("News source crawl failed: source=kodit")
         return SourceResult("kodit", error=f"{type(error).__name__}: {error}")
     return SourceResult("kodit", tuple(items), malformed)
 
@@ -82,11 +87,11 @@ def _collapsed_text(element: object) -> str | None:
     return text or None
 
 
-def _date_cell(row: object) -> str | None:
-    cells = row.find_all("td", recursive=False)
-    if len(cells) < 2:
+def _date_cell(link: object) -> str | None:
+    title_cell = link.find_parent("td")
+    if title_cell is None:
         return None
-    return _collapsed_text(cells[-1])
+    return _collapsed_text(title_cell.find_next_sibling("td"))
 
 
 def _parse_published_at(value: str | None) -> datetime | None:

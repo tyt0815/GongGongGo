@@ -28,14 +28,22 @@ def test_reb_direct_url_and_classification(fixtures: Callable[[str], bytes]) -> 
     assert malformed == 1
 
 
-def test_kodit_and_kogas_direct_urls(fixtures: Callable[[str], bytes]) -> None:
+def test_kodit_direct_url(fixtures: Callable[[str], bytes]) -> None:
     kodit_items, kodit_malformed = parse_kodit_page(fixtures("kodit.html"))
-    kogas_items, kogas_malformed = parse_kogas_page(fixtures("kogas.html"))
 
     assert "bbsId=47&mi=2639&nttSn=5094548" in kodit_items[0].url
+    assert kodit_items[0].published_at is not None
+    assert kodit_items[0].published_at.isoformat() == "2026-08-25T00:00:00+09:00"
     assert kodit_items[1].published_at is None
     assert kodit_malformed == 1
+
+
+def test_kogas_direct_url(fixtures: Callable[[str], bytes]) -> None:
+    kogas_items, kogas_malformed = parse_kogas_page(fixtures("kogas.html"))
+
     assert "Key=1010202000000&boardIdx=47656&cbIdx=41" in kogas_items[0].url
+    assert kogas_items[0].published_at is not None
+    assert kogas_items[0].published_at.isoformat() == "2026-08-25T00:00:00+09:00"
     assert kogas_items[1].published_at is None
     assert kogas_malformed == 1
 
@@ -126,7 +134,9 @@ def test_institution_crawlers_fetch_second_page(
 def test_institution_crawlers_stop_after_page_with_old_valid_item(
     crawl: Callable[..., object], fixture_name: str, fixtures: Callable[[str], bytes]
 ) -> None:
-    old_page = fixtures(fixture_name).replace(b"2026.08.25", b"2026.07.26")
+    old_page = fixtures(fixture_name).replace(
+        b"2026.08.25", b"2026.07.26"
+    ).replace(b"2026-08-25", b"2026-07-26")
     calls: list[str] = []
 
     result = crawl(
@@ -170,8 +180,13 @@ def test_reb_crawl_keeps_newer_and_malformed_dates_before_stopping_at_old_date()
 def test_institution_crawlers_retain_the_inclusive_thirty_day_boundary(
     crawl: Callable[..., object], fixture_name: str, fixtures: Callable[[str], bytes]
 ) -> None:
-    boundary_page = fixtures(fixture_name).replace(b"2026.08.25", b"2026.07.27")
-    old_page = fixtures(fixture_name).replace(b"2026.08.25", b"2026.07.26")
+    fixture = fixtures(fixture_name)
+    boundary_page = fixture.replace(b"2026.08.25", b"2026.07.27").replace(
+        b"2026-08-25", b"2026-07-27"
+    )
+    old_page = fixture.replace(b"2026.08.25", b"2026.07.26").replace(
+        b"2026-08-25", b"2026-07-26"
+    )
     calls = 0
 
     def fetcher(_url: str) -> bytes:

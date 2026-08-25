@@ -710,6 +710,62 @@ def test_news_filters_opens_and_dismisses(
     expect(row).to_have_count(0)
 
 
+def test_initial_news_load_reads_status_before_list(
+    page: Page, live_server: LiveServer
+) -> None:
+    """Catches a startup commit landing between a stale list read and status read."""
+    request_order: list[str] = []
+
+    def fulfill_status(route) -> None:
+        request_order.append("status")
+        route.fulfill(
+            json={
+                "running": False,
+                "completed_sources": 5,
+                "total_sources": 5,
+                "new_count": 1,
+                "duplicate_count": 0,
+                "expired_count": 0,
+                "source_errors": {},
+                "run_error": None,
+            }
+        )
+
+    def fulfill_list(route) -> None:
+        request_order.append("list")
+        items = []
+        if "status" in request_order:
+            items = [
+                {
+                    "id": 901,
+                    "item_type": "newspaper",
+                    "source": "hankyung",
+                    "source_name": "한국경제",
+                    "category": "IT",
+                    "source_category": "IT·과학",
+                    "title": "시작 수집 반영 기사",
+                    "url": "https://www.hankyung.com/article/901",
+                    "published_at": "2026-08-25T12:00:00+09:00",
+                    "discovered_at": "2026-08-25T12:01:00+09:00",
+                    "used_discovered_date": False,
+                }
+            ]
+        route.fulfill(json={"items": items})
+
+    page.route("**/api/news/crawl/status", fulfill_status)
+    page.route("**/api/news?*", fulfill_list)
+    page.goto(live_server.base_url)
+
+    with page.expect_response(
+        lambda response: response.request.method == "GET" and "/api/news?" in response.url
+    ):
+        page.get_by_role("button", name="뉴스/기관소식").click()
+
+    expect(page.locator("#news-list")).to_have_attribute("aria-busy", "false")
+    assert request_order[:2] == ["status", "list"]
+    expect(page.locator(".news-row", has_text="시작 수집 반영 기사")).to_be_visible()
+
+
 def test_news_mobile_row_stays_in_viewport_and_job_panel_is_restored(
     page: Page, live_server: LiveServer
 ) -> None:

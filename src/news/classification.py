@@ -4,7 +4,7 @@ import re
 _REGULAR_STATISTICS_PHRASES = (
     "주간아파트가격동향",
     "전국주택가격동향",
-    "상업용부동산 임대동향조사",
+    "상업용부동산 임대동향",
 )
 
 
