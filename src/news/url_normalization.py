@@ -28,7 +28,7 @@ def normalize_url(value: str) -> str:
     except ValueError:
         port = None
     default_port = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
-    netloc = f"{userinfo}{host}" if not port or default_port else f"{userinfo}{host}:{port}"
+    netloc = f"{userinfo}{host}" if port is None or default_port else f"{userinfo}{host}:{port}"
 
     path = parsed.path
     if path.endswith("/") and path != "/":

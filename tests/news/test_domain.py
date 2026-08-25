@@ -33,6 +33,7 @@ def test_url_normalization_is_conservative() -> None:
     assert normalize_url(value) == "http://example.com/a?boardIdx=41"
     assert normalize_url("https://x.test/v?bbsId=47&nttSn=9") == "https://x.test/v?bbsId=47&nttSn=9"
     assert normalize_url("https://EXAMPLE.com:443/?fbclid=x&gclid=y&n_cid=z") == "https://example.com/"
+    assert normalize_url("https://example.test:0/a") == "https://example.test:0/a"
     assert normalize_url("https://example.com/a/") == "https://example.com/a"
 
 
