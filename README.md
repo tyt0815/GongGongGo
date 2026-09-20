@@ -48,7 +48,7 @@ python -m venv .venv
 
 Debian에 Docker Engine과 Compose 플러그인이 설치되고 저장소가 clone된 상태에서 실행합니다. Docker 컨테이너는 내부에서 `0.0.0.0`으로 수신하지만, Compose는 Debian 호스트의 `127.0.0.1:8000`에만 포트를 공개합니다. 직접 LAN 접속은 열리지 않습니다.
 
-먼저 기존 Windows 서버와 자동 시작 작업을 중지하고, `data/gonggonggo.db`와 `data/job_posts.json`을 Debian clone의 `data/`로 복사합니다. 서버가 실행 중일 때 DB 본체만 복사하지 마십시오. `job_posts.json`은 clone에도 있지만 운영 원본을 함께 보관합니다.
+먼저 기존 Windows 서버와 자동 시작 작업을 중지하고, `data/gonggonggo.db`를 Debian clone의 `data/`로 복사합니다. 종료 후 WAL sidecar 파일(`gonggonggo.db-wal`, `gonggonggo.db-shm`)이 남아 있다면 함께 복사합니다. 서버가 실행 중일 때 DB 본체만 복사하지 마십시오. 기존 `data/job_posts.json` 원본을 별도로 보관 중이라면 함께 복사합니다. 이 JSON은 현재 Git clone에 포함되지 않습니다.
 
 Debian의 저장소 폴더에서 실행합니다. Windows의 `data/`와 `logs/`는 Docker 이미지에 포함되지 않고, Debian 호스트 폴더가 컨테이너에 연결됩니다. 현재 Debian 사용자 ID로 실행하므로 이 폴더에 쓰기 권한이 있어야 합니다.
 
@@ -59,13 +59,14 @@ curl http://127.0.0.1:8000/health
 docker compose logs --tail=100 gonggonggo
 ```
 
-주 컴퓨터에서 SSH 터널을 연 상태로 브라우저의 <http://127.0.0.1:8000>에 접속합니다. `user`와 `debian-host`는 Debian SSH 계정과 주소로 바꿉니다. 주 컴퓨터의 기존 서버가 8000 포트를 사용 중이면 먼저 종료합니다.
+Debian 호스트와 접속할 PC가 같은 tailnet에 로그인된 상태라면, Debian 호스트에서 Tailscale Serve를 한 번 설정합니다. 명령이 출력한 HTTPS 주소를 접속할 PC의 브라우저에서 엽니다. 최초 실행 시 tailnet의 HTTPS 인증서 활성화 안내가 나올 수 있습니다. `--bg` 설정은 재부팅 후에도 유지됩니다.
 
 ```sh
-ssh -N -L 8000:127.0.0.1:8000 user@debian-host
+tailscale serve --bg 8000
+tailscale serve status
 ```
 
-앱 설정의 `시작 시 브라우저 열기`는 서버 노트북에서는 필요하지 않으므로 꺼 두는 편이 좋습니다. 종료는 `docker compose stop`, 코드 변경 반영은 `docker compose up -d --build`로 합니다. 백업할 때는 먼저 `docker compose stop`을 실행한 뒤 `data/gonggonggo.db`와 `data/job_posts.json`을 함께 복사합니다.
+Tailscale Serve는 tailnet 내부에만 공개합니다. 인터넷 전체에 공개하는 `tailscale funnel`은 사용하지 않습니다. 앱 설정의 `시작 시 브라우저 열기`는 서버 노트북에서는 필요하지 않으므로 꺼 두는 편이 좋습니다. 종료는 `docker compose stop`, 코드 변경 반영은 `docker compose up -d --build`로 합니다. 백업할 때는 먼저 `docker compose stop`을 실행한 뒤 DB와 남은 sidecar 파일을 복사하고, JSON 원본이 있다면 함께 보관합니다.
 
 작업 스케줄러처럼 창 없이 실행하려면 `ggg_startup.vbs`를 직접 등록하는 것이 가장 조용합니다. 기존 작업 스케줄러가 `ggg_startup.bat`을 가리키고 있어도 BAT가 VBS에 실행을 넘기고 즉시 끝납니다.
 
@@ -99,16 +100,16 @@ wscript.exe .\ggg_startup.vbs
 ## 데이터와 마이그레이션
 
 - 운영 DB: `data/gonggonggo.db` (채용과 뉴스의 독립 테이블 포함)
-- 기존 원본: `data/job_posts.json`
+- 기존 JSON 원본(있는 경우): `data/job_posts.json`
 
 DB가 처음 준비될 때 기존 JSON에서 마감일이 정확한 `YYYY.MM.DD` 형식인 공고만 한 번 가져옵니다. 날짜를 파싱할 수 없는 기존 공고는 건너뛰며 JSON 파일은 수정하거나 삭제하지 않습니다. 이후 새로 수집한 상시·날짜 미확인 공고는 SQLite에 저장할 수 있습니다.
 
-서버를 완전히 종료한 뒤 DB와 원본 JSON을 함께 복사하면 백업할 수 있습니다.
+서버를 완전히 종료한 뒤 DB와 남은 sidecar 파일을 함께 복사하면 백업할 수 있습니다. 원본 JSON 파일이 있다면 함께 보관합니다.
 
 ```powershell
 New-Item -ItemType Directory -Force backup | Out-Null
-Copy-Item data\gonggonggo.db backup\gonggonggo.db
-Copy-Item data\job_posts.json backup\job_posts.json
+Copy-Item data\gonggonggo.db* backup\
+if (Test-Path data\job_posts.json) { Copy-Item data\job_posts.json backup\job_posts.json }
 ```
 
 SQLite가 WAL 파일을 사용하므로 실행 중인 DB 파일 하나만 복사하지 마십시오. 운영 데이터 초기화나 재마이그레이션은 자동 복구 동작이 아니므로, DB 파일을 직접 삭제하기 전에 반드시 백업하십시오.

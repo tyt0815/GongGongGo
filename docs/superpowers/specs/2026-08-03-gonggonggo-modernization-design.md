@@ -305,6 +305,6 @@ UI에는 마지막 실행과 카테고리 결과만 보여주고 상세 진단�
 
 ## 15. Debian Docker 운영 보완 (2026-09-20)
 
-사용자의 노트북 이전 요청에 따라 같은 로컬 1인용 앱을 Debian Docker Compose로도 실행한다. Windows 직접 실행의 loopback 바인딩은 유지한다. 컨테이너는 Docker 포트 전달을 위해 내부 `0.0.0.0:8000`에서 수신하지만 Debian 호스트는 `127.0.0.1:8000`에만 공개한다. 다른 컴퓨터의 사용자는 SSH 로컬 포트 전달로 접속한다. 인증 없는 LAN·인터넷 직접 공개는 포함하지 않는다.
+사용자의 노트북 이전 요청에 따라 같은 로컬 1인용 앱을 Debian Docker Compose로도 실행한다. Windows 직접 실행의 loopback 바인딩은 유지한다. 컨테이너는 Docker 포트 전달을 위해 내부 `0.0.0.0:8000`에서 수신하지만 Debian 호스트는 `127.0.0.1:8000`에만 공개한다. 다른 컴퓨터의 사용자는 Debian 호스트의 Tailscale Serve가 제공하는 tailnet 내부 HTTPS 주소로 접속한다. 인증 없는 LAN·인터넷 직접 공개는 포함하지 않는다.
 
-컨테이너는 단일 FastAPI 프로세스와 Playwright Chromium을 실행한다. `data/`와 `logs/`는 호스트 폴더로 연결하며, 운영 DB와 원본 JSON은 기존 Windows 서버를 완전히 종료한 뒤 함께 복사한다. Docker 이미지에는 운영 데이터와 로그를 넣지 않는다. 날짜와 TTL 판정은 `Asia/Seoul` 시간대를 사용한다. 주기적 수집과 알림을 추가하지 않는다.
+컨테이너는 단일 FastAPI 프로세스와 Playwright Chromium을 실행한다. `data/`와 `logs/`는 호스트 폴더로 연결하며, 운영 DB와 남은 sidecar는 기존 Windows 서버를 완전히 종료한 뒤 복사한다. JSON 원본이 따로 있으면 함께 보관한다. Docker 이미지에는 운영 데이터와 로그를 넣지 않는다. 날짜와 TTL 판정은 `Asia/Seoul` 시간대를 사용한다. 주기적 수집과 알림을 추가하지 않는다.
