@@ -9,7 +9,7 @@ services:
       GONGGONGGO_BIND_HOST: 0.0.0.0
       TZ: Asia/Seoul
     ports:
-      - "127.0.0.1:8000:8000"
+      - "100.127.95.13:8000:8000"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
