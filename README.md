@@ -1,26 +1,8 @@
 # GongGongGo
 
-공공기관 채용 공고와 취업 준비용 뉴스·기관소식을 한곳에서 확인하는 로컬 1인용 웹앱입니다. Windows 직접 실행 시 FastAPI 서버는 `127.0.0.1:8000`에서 먼저 응답하고, 채용과 뉴스의 시작 시 1회 크롤링은 서로 독립된 백그라운드 작업으로 진행됩니다.
+공공기관 채용 공고와 뉴스·기관소식을 확인하는 개인용 FastAPI 웹앱입니다. 채용과 뉴스는 앱 시작 시 한 번씩 백그라운드에서 수집하고, 화면의 `새로 수집`으로 다시 실행할 수 있습니다.
 
-## 주요 기능
-
-- `검토 대기`, `지원 예정`, `지원 완료`, `제외`의 네 상태로 공고 관리
-- 새로 수집한 검토 대기 공고를 `NEW`로 상단 표시하고, `확인` 또는 상태 변경 시 해제
-- `지원 예정` 공고를 기관 필터+핀 → 기관 필터 → 핀 → 일반 순으로 배치하고, 핀 그룹은 마감일순으로 정렬
-- QHD 이상 넓은 화면에서는 선택한 묶음의 두 목록을 나란히 표시하고, 1,400px 미만에서는 한 상태 탭만 표시
-- 기관·고용 형태·경력·직무를 구조화해 표시하고, 파싱에 실패하면 원본 제목으로 표시
-- 기관 필터에 일치한 공고는 카드의 기관명 색상으로 구분
-- SQLite의 짧은 트랜잭션으로 크롤링 중에도 사용자 상태 변경을 보존
-- Async Playwright 카테고리 수집과 `1/2/4` 동시 작업 설정
-- 수집 진행률, 부분 실패 사유와 실패 카테고리 재시도
-- 기관·IT 직무 키워드, 브라우저 자동 열기 설정 저장
-- 제외 실행 취소, 영구 삭제 링크 차단과 차단 해제
-- 수집 결과 저장 시 마감일이 지난 날짜형 공고 자동 정리
-- 한국경제·매일경제 뉴스와 한국부동산원·신용보증기금·한국가스공사 기관소식 Inbox
-- 기간·자료 종류·출처·분류·제목 필터, 현재 필터 결과 건수, 원문 새 탭 열기와 `처리 완료`
-- 날짜별 UTF-8 로그와 시작 시 14일 초과 로그 정리
-
-## 설치
+## Windows 설치·실행
 
 Python 3.12가 설치된 PowerShell에서 프로젝트 폴더를 기준으로 실행합니다.
 
@@ -28,83 +10,61 @@ Python 3.12가 설치된 PowerShell에서 프로젝트 폴더를 기준으로 �
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe main.py
 ```
 
-`requirements-dev.txt`는 실행 의존성과 pytest 의존성을 함께 설치합니다. 이미 `.venv`와 Chromium이 준비되어 있으면 이 단계는 다시 실행할 필요가 없습니다.
+브라우저에서 <http://127.0.0.1:8000>에 접속합니다. 일반 실행은 headless이며 `ggg_debug.bat` 또는 `main.py --debug`는 콘솔과 Chromium 창을 표시합니다.
 
-## 실행
-
-문제를 확인하며 실행할 때는 다음 BAT를 사용합니다. 현재 콘솔에 로그가 표시되고, 크롤링 중 Playwright Chromium 창이 화면에 나타나며, 서버 종료 뒤 콘솔 창이 유지됩니다.
-
-```powershell
-.\ggg_debug.bat
-```
-
-같은 디버그 모드는 `.\.venv\Scripts\python.exe -u main.py --debug`로도 실행할 수 있습니다. 일반 `main.py` 및 숨김 시작 경로의 크롤러는 기존처럼 headless 모드로 동작합니다.
-
-브라우저에서 <http://127.0.0.1:8000>으로 접속합니다. 설정의 `시작 시 브라우저 열기`를 켜면 다음 시작부터 `/health` 응답 후 브라우저를 엽니다. 기본값은 꺼짐입니다.
-
-## Debian Docker 실행
-
-Debian에 Docker Engine과 Compose 플러그인이 설치되고 저장소가 clone된 상태에서 실행합니다. Docker 컨테이너는 내부에서 `0.0.0.0`으로 수신하지만, Compose는 Debian 호스트의 `127.0.0.1:8000`에만 포트를 공개합니다. 직접 LAN 접속은 열리지 않습니다.
-
-먼저 기존 Windows 서버와 자동 시작 작업을 중지하고, `data/gonggonggo.db`를 Debian clone의 `data/`로 복사합니다. 종료 후 WAL sidecar 파일(`gonggonggo.db-wal`, `gonggonggo.db-shm`)이 남아 있다면 함께 복사합니다. 서버가 실행 중일 때 DB 본체만 복사하지 마십시오. 기존 `data/job_posts.json` 원본을 별도로 보관 중이라면 함께 복사합니다. 이 JSON은 현재 Git clone에 포함되지 않습니다.
-
-Debian의 저장소 폴더에서 실행합니다. Windows의 `data/`와 `logs/`는 Docker 이미지에 포함되지 않고, Debian 호스트 폴더가 컨테이너에 연결됩니다. 현재 Debian 사용자 ID로 실행하므로 이 폴더에 쓰기 권한이 있어야 합니다.
-
-```sh
-mkdir -p data logs
-APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
-curl http://127.0.0.1:8000/health
-docker compose logs --tail=100 gonggonggo
-```
-
-Debian 호스트와 접속할 PC가 같은 tailnet에 로그인된 상태라면, Debian 호스트에서 Tailscale Serve를 한 번 설정합니다. 명령이 출력한 HTTPS 주소를 접속할 PC의 브라우저에서 엽니다. 최초 실행 시 tailnet의 HTTPS 인증서 활성화 안내가 나올 수 있습니다. `--bg` 설정은 재부팅 후에도 유지됩니다.
-
-```sh
-tailscale serve --bg 8000
-tailscale serve status
-```
-
-Tailscale Serve는 tailnet 내부에만 공개합니다. 인터넷 전체에 공개하는 `tailscale funnel`은 사용하지 않습니다. 앱 설정의 `시작 시 브라우저 열기`는 서버 노트북에서는 필요하지 않으므로 꺼 두는 편이 좋습니다. 종료는 `docker compose stop`, 코드 변경 반영은 `docker compose up -d --build`로 합니다. 백업할 때는 먼저 `docker compose stop`을 실행한 뒤 DB와 남은 sidecar 파일을 복사하고, JSON 원본이 있다면 함께 보관합니다.
-
-작업 스케줄러처럼 창 없이 실행하려면 `ggg_startup.vbs`를 직접 등록하는 것이 가장 조용합니다. 기존 작업 스케줄러가 `ggg_startup.bat`을 가리키고 있어도 BAT가 VBS에 실행을 넘기고 즉시 끝납니다.
+숨김 실행은 다음 명령을 사용합니다. 작업 스케줄러에도 `ggg_startup.vbs`를 등록할 수 있습니다. 기존 BAT 경로는 VBS로 실행을 넘깁니다.
 
 ```powershell
 wscript.exe .\ggg_startup.vbs
 ```
 
-두 Windows 실행 경로 모두 `logs/gonggonggo-YYYY-MM-DD.log`에 같은 앱 로그를 남깁니다. 실행 중인 로컬 서버만 강제 종료한 뒤 숨김 모드로 다시 시작하려면 `ggg_restart.bat`을 실행합니다. 이 스크립트는 다른 Python 프로세스를 종료하지 않고 `127.0.0.1:8000`의 PID만 종료하며 `/health` 성공까지 확인합니다. Windows 직접 실행과 Debian Docker의 호스트 포트는 로컬 주소에만 열리며 외부 접속용 인증은 없습니다.
+`ggg_restart.bat`은 로컬 8000 포트를 사용 중인 서버만 강제 종료하고 숨김 모드로 다시 시작하며 `/health`를 확인합니다. 로그는 `logs/gonggonggo-YYYY-MM-DD.log`에 기록합니다.
 
-## 뉴스/기관소식
+## Debian Docker 실행
 
-상단의 `뉴스/기관소식`에서 한국경제와 매일경제의 정치·경제·사회·IT·세계·주요뉴스, 한국부동산원·신용보증기금·한국가스공사의 공식 보도자료를 확인할 수 있습니다. 한국부동산원의 명백한 정기 조사·동향 자료만 `정기 통계`로 분류하고 나머지 기관 자료는 `보도자료`로 표시합니다.
+Docker Engine·Compose 플러그인과 저장소가 준비되어 있고, Debian 호스트와 접속할 PC가 Tailscale에 연결되어 있어야 합니다.
 
-앱은 공식 목록의 제목과 원문 링크, 출처·분류·게시일시·최초 수집시각만 수집하며 기사 본문, 첨부파일, 요약이나 추천 정보는 저장하지 않습니다. 매일경제 목록에 게시일시가 없는 항목은 현재 최신 목록 전체 범위에서 공식 기사 페이지의 공개 메타데이터만 확인하며, 확인할 수 없으면 최초 수집일을 사용합니다. `오늘`, `어제`, `최근 3일`, `최근 7일`, `최근 30일`과 자료 종류·출처·분류·제목 검색을 조합할 수 있습니다. 자료 종류는 전체·뉴스·기관소식 버튼으로 고르고, 출처와 분류는 복수 체크할 수 있습니다. 자료 종류는 페이지를 열 때 전체가 기본이며 출처·분류 체크 상태는 브라우저에 마지막 선택을 기억합니다.
+현재 `compose.yaml`은 호스트의 Tailscale IP `100.127.95.13:8000`을 컨테이너의 `8000`에 연결합니다. 다른 서버에서는 `tailscale ip -4`로 확인한 주소로 Compose의 호스트 IP를 바꿉니다. Tailscale 인터페이스가 준비된 뒤 컨테이너를 시작합니다.
 
-신문 항목은 7일, 기관 항목은 30일 TTL 안에서만 보관됩니다. 게시일이 오늘보다 미래이거나 출처 TTL을 벗어난 항목은 저장하지 않고, 게시일이 없으면 최초 수집일을 기준으로 저장합니다. `처리 완료`하면 현재 목록에서 삭제되고 원래 TTL 경계까지만 다시 나타나지 않습니다. 이는 영구 삭제나 장기 보관 상태가 아닙니다.
+기존 데이터를 옮기려면 Windows 서버와 자동 시작 작업을 중지한 뒤 `data/gonggonggo.db`와 남은 `gonggonggo.db-wal`·`gonggonggo.db-shm`을 Debian clone의 `data/`로 복사합니다. JSON 원본을 보관 중이면 함께 복사합니다. 운영 DB와 JSON은 Git clone에 포함되지 않습니다.
 
-채용과 뉴스 수집은 앱 시작 시 각각 한 번 실행되며 각 화면의 `새로 수집`으로 따로 수동 실행할 수 있습니다. 한쪽 수집 상태는 다른 쪽 수동 실행을 막지 않습니다. 주기적 scheduler, 반복 수집과 알림은 제공하지 않습니다.
+Debian 저장소 폴더에서 실행합니다. 컨테이너는 현재 사용자 ID로 호스트의 `data/`와 `logs/`에 쓰므로 두 폴더에 쓰기 권한이 있어야 합니다.
 
-## 웹 설정
+```sh
+mkdir -p data logs
+APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
+curl http://100.127.95.13:8000/health
+docker compose logs --tail=100 gonggonggo
+```
 
-우측 상단 `설정`에서 다음 값을 저장할 수 있습니다.
+브라우저에서 <http://100.127.95.13:8000>에 접속합니다. Compose에서 IP를 바꾸었다면 확인 명령과 접속 주소도 바꿉니다. 접속 허용 여부는 tailnet 접근 정책을 따릅니다.
 
-- 동시 수집 작업 수: `1`, `2`, `4` 중 하나, 기본 `2`
-- 시작 시 브라우저 열기: 기본 꺼짐
-- 대상 기관 키워드: 파싱된 기관명에 대소문자 무시 부분 일치
-- IT 직무 키워드: 파싱된 직무에 대소문자 무시 부분 일치
+종료는 `docker compose stop`, 재실행·코드 반영은 위의 `APP_UID`·`APP_GID`를 지정한 `up -d --build` 명령을 사용합니다. 데이터와 로그는 호스트 폴더에 유지됩니다.
 
-대상 기관 공고는 직무와 무관하게 표시합니다. 일반 기관 공고는 직무 키워드가 일치할 때만 표시하고, 일치한 직무만 카드에 보여 줍니다. 키워드를 저장하면 재크롤링 없이 현재 목록에 바로 다시 적용됩니다.
+## 설정과 사용
 
-## 데이터와 마이그레이션
+우측 상단 `설정`에서 동시 수집 작업 수(`1/2/4`, 기본 `2`), 기관·IT 직무 키워드, 시작 시 브라우저 열기를 저장합니다. 브라우저 열기는 기본 꺼짐이며 서버 노트북에서는 꺼 둡니다.
 
-- 운영 DB: `data/gonggonggo.db` (채용과 뉴스의 독립 테이블 포함)
+채용은 검토 대기·지원 예정·지원 완료·제외로 관리합니다. 대상 기관 공고는 직무와 무관하게, 일반 기관 공고는 일치하는 IT 직무가 있을 때 표시합니다.
+
+뉴스·기관소식은 한국경제·매일경제와 한국부동산원·신용보증기금·한국가스공사의 제목과 원문 링크를 제공합니다. 신문은 7일, 기관은 30일 보관하며 `처리 완료`로 현재 목록에서 제거합니다. 본문은 저장하지 않습니다.
+
+수집 실패는 화면의 출처·카테고리 오류와 로그에서 확인합니다. 채용과 뉴스 수집은 독립적이며 주기적 수집·알림은 없습니다.
+
+## 데이터와 백업
+
+- 운영 DB: `data/gonggonggo.db`
 - 기존 JSON 원본(있는 경우): `data/job_posts.json`
+- 로그: `logs/`
 
-DB가 처음 준비될 때 기존 JSON에서 마감일이 정확한 `YYYY.MM.DD` 형식인 공고만 한 번 가져옵니다. 날짜를 파싱할 수 없는 기존 공고는 건너뛰며 JSON 파일은 수정하거나 삭제하지 않습니다. 이후 새로 수집한 상시·날짜 미확인 공고는 SQLite에 저장할 수 있습니다.
+JSON 원본이 있으면 정상 날짜 공고만 한 번 가져오며 원본을 수정하지 않습니다. 이후 사용자 상태와 설정은 SQLite에 저장됩니다.
 
-서버를 완전히 종료한 뒤 DB와 남은 sidecar 파일을 함께 복사하면 백업할 수 있습니다. 원본 JSON 파일이 있다면 함께 보관합니다.
+서버를 완전히 종료한 뒤 DB와 남은 sidecar를 함께 복사합니다. Docker에서는 먼저 `docker compose stop`을 실행합니다. 실행 중인 DB 본체만 복사하거나 백업 없이 DB를 삭제하지 마십시오.
+
+Windows 백업 예시:
 
 ```powershell
 New-Item -ItemType Directory -Force backup | Out-Null
@@ -112,25 +72,13 @@ Copy-Item data\gonggonggo.db* backup\
 if (Test-Path data\job_posts.json) { Copy-Item data\job_posts.json backup\job_posts.json }
 ```
 
-SQLite가 WAL 파일을 사용하므로 실행 중인 DB 파일 하나만 복사하지 마십시오. 운영 데이터 초기화나 재마이그레이션은 자동 복구 동작이 아니므로, DB 파일을 직접 삭제하기 전에 반드시 백업하십시오.
+## 테스트와 설계 결정
 
-## 테스트
-
-전체 테스트는 임시 DB와 임시 JSON을 사용합니다. 브라우저 E2E는 무네트워크 가짜 채용·뉴스 관리자를 주입하므로 네이버나 뉴스 출처에 접속하거나 운영 상태를 변경하지 않습니다.
+자동 테스트는 임시 DB·JSON과 외부 네트워크 없는 fake·fixture를 사용합니다. 브라우저 E2E에는 Playwright Chromium이 필요합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
+git diff --check
 ```
 
-브라우저 실행 파일이 없다면 먼저 다음을 실행합니다.
-
-```powershell
-.\.venv\Scripts\python.exe -m playwright install chromium
-```
-
-## 운영 범위와 제한
-
-- 시작 시 1회 및 웹의 수동 수집만 지원하며 주기적 반복 수집과 알림은 없습니다.
-- Naver Cafe나 다섯 공식 뉴스 출처의 네트워크·목록 구조 변경으로 일부 수집이 실패할 수 있습니다. 채용 성공 결과는 보존되고 실패 카테고리는 화면에서 다시 시도할 수 있으며, 뉴스 출처 오류는 다른 출처와 채용 수집을 중단시키지 않습니다.
-- 한 컴퓨터의 한 사용자를 위한 로컬 앱이며 외부 접속, 인증, 데스크톱 앱 패키징은 범위 밖입니다.
-- 상세 설계는 [전체 개선 설계](docs/superpowers/specs/2026-08-03-gonggonggo-modernization-design.md), 다음 작업자를 위한 실제 구현 정보는 [인수인계](docs/HANDOFF.md)에 있습니다.
+프로젝트 작업 규칙은 [AGENTS.md](AGENTS.md), 설계 결정 목록은 [docs/adr.md](docs/adr.md)에 있습니다. ADR 파일은 `docs/`에서 확인합니다.
