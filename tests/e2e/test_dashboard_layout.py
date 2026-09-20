@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -17,7 +18,7 @@ import pytest
 import uvicorn
 from playwright.sync_api import Browser, Page, Response, expect, sync_playwright
 
-from src.domain import CrawledPost, CrawlSnapshot
+from src.domain import CrawledPost, CrawlSnapshot, PostStatus
 from src.news.domain import CrawledNewsItem, NewsCrawlSnapshot, NewsItemType
 from src.news.repository import NewsRepository
 from src.repository import Repository
@@ -300,6 +301,23 @@ def test_wide_and_narrow_status_layouts(
     expect(page.locator("[data-lane]:visible")).to_have_count(2)
     expect(page.locator(".dashboard-shell")).to_have_css("max-width", "1600px")
 
+    institution_card = page.locator("article").filter(
+        has=page.get_by_role("link", name="한국교육학술정보원", exact=True)
+    ).first
+    institution_link = institution_card.get_by_role(
+        "link", name="한국교육학술정보원", exact=True
+    )
+    expect(institution_link).to_have_class("institution-filtered")
+    general_card = page.locator("article").filter(
+        has=page.get_by_role("link", name="일반연구원", exact=True)
+    ).first
+    general_link = general_card.get_by_role("link", name="일반연구원", exact=True)
+    expect(general_link).not_to_have_class("institution-filtered")
+    assert institution_link.evaluate("element => getComputedStyle(element).color") != (
+        general_link.evaluate("element => getComputedStyle(element).color")
+    )
+    expect(page.get_by_text(re.compile(r"^(기관|직무) 필터"))).to_have_count(0)
+
     long_role = page.get_by_title(LONG_ROLE).first
     expect(long_role).to_be_visible()
     role_metrics = long_role.evaluate(
@@ -479,6 +497,84 @@ def test_new_posts_are_prioritized_and_clear_only_on_an_action(
         )
         expect(planned).to_be_visible()
         expect(planned.locator(".new-badge")).to_have_count(0)
+    finally:
+        page.close()
+        server.stop()
+
+
+def test_planned_posts_prioritize_institution_matches_then_pins(
+    browser: Browser, tmp_path: Path
+) -> None:
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    server = LiveServer(tmp_path / "gonggonggo.db", json_path)
+    page = browser.new_page(viewport={"width": 2560, "height": 1440})
+    try:
+        server.start()
+        repository = Repository(server.db_path)
+        repository.replace_keywords("institution", ["대상"])
+        repository.replace_keywords("role", ["전산"])
+        posts = [
+            CrawledPost(
+                category="중앙공기업",
+                title=f"[{name} 채용] 정규직 신입 (전산)",
+                deadline_raw=deadline,
+                link=f"https://example.test/jobs/{index}",
+            )
+            for index, (name, deadline) in enumerate(
+                (
+                    ("대상빠른", "2099.08.10"),
+                    ("보관하나", "2099.08.06"),
+                    ("대상느린", "2099.08.12"),
+                    ("보관둘", "2099.08.13"),
+                    ("대상일반", "2099.08.09"),
+                    ("보관셋", "2099.08.05"),
+                    ("일반빠른", "2099.08.08"),
+                    ("보관넷", "2099.08.15"),
+                    ("일반느린", "2099.08.11"),
+                    ("보관다섯", "2099.08.04"),
+                    ("일반기본", "2099.08.07"),
+                )
+            )
+        ]
+        repository.upsert_crawled_posts(posts)
+        for post in posts:
+            status = (
+                PostStatus.APPLIED
+                if "보관" in post.title
+                else PostStatus.PLANNED
+            )
+            repository.update_status(post.link, status)
+
+        page.goto(server.base_url)
+        cards = page.locator('[data-lane="planned"]:visible article')
+        for name in ("대상느린", "일반느린", "대상빠른", "일반빠른"):
+            card = cards.filter(
+                has=page.get_by_role("link", name=name, exact=True)
+            )
+            card.get_by_role("button", name="상단 고정", exact=True).click()
+            expect(
+                card.get_by_role("button", name="상단 고정 해제", exact=True)
+            ).to_be_visible()
+
+        expected_order = [
+            "대상빠른",
+            "대상느린",
+            "대상일반",
+            "일반빠른",
+            "일반느린",
+            "일반기본",
+        ]
+        assert cards.locator("h3 a").all_inner_texts() == expected_order
+        page.locator("#sort-select").select_option("recent")
+        assert cards.locator("h3 a").all_inner_texts() == expected_order
+
+        page.reload()
+        expect(cards).to_have_count(6)
+        assert cards.locator("h3 a").all_inner_texts() == expected_order
+        expect(
+            cards.get_by_role("button", name="상단 고정 해제", exact=True)
+        ).to_have_count(4)
     finally:
         page.close()
         server.stop()
@@ -668,46 +764,77 @@ def test_news_filters_opens_and_dismisses(
         return response.request.method == "GET" and "/api/news?" in response.url
 
     expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(page.locator("#news-count")).to_have_text("총 1건")
     expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_be_visible()
     expect(retained_row).to_have_count(0)
 
     with page.expect_response(is_news_list_response):
         page.get_by_role("button", name="최근 7일").click()
     expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(page.locator("#news-count")).to_have_text("총 5건")
     expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_be_visible()
     expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_be_visible()
     expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_be_visible()
 
     with page.expect_response(is_news_list_response):
-        page.get_by_label("자료 종류").select_option("newspaper")
+        page.get_by_role("button", name="뉴스", exact=True).click()
     expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(page.locator("#news-count")).to_have_text("총 4건")
     expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="공공 데이터 개방 확대")).to_have_count(0)
 
-    with page.expect_response(is_news_list_response):
-        page.get_by_label("출처").select_option("hankyung")
-    expect(news_list).to_have_attribute("aria-busy", "false")
+    page.get_by_label("매일경제", exact=True).uncheck()
+    expect(page.locator("#news-count")).to_have_text("총 3건")
     expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="지역경제 투자 확대")).to_have_count(0)
 
-    with page.expect_response(is_news_list_response):
-        page.get_by_label("분류").select_option("IT")
-    expect(news_list).to_have_attribute("aria-busy", "false")
+    page.get_by_label("경제", exact=True).uncheck()
+    expect(page.locator("#news-count")).to_have_text("총 2건")
     expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="한국경제 경제정책")).to_have_count(0)
 
     with page.expect_response(is_news_list_response):
         page.get_by_label("제목 검색").fill("AI")
     expect(news_list).to_have_attribute("aria-busy", "false")
+    expect(page.locator("#news-count")).to_have_text("총 1건")
     expect(retained_row).to_be_visible()
     expect(page.locator(".news-row", has_text="클라우드 보안 강화")).to_have_count(0)
 
     row = retained_row
     expect(row).to_be_visible()
     expect(row.locator("a.news-title")).to_have_attribute("target", "_blank")
+    expect(row.get_by_role("link", name="원문 보기")).to_have_count(0)
     row.get_by_role("button", name="처리 완료").click()
     expect(row).to_have_count(0)
+
+
+def test_news_checkbox_filters_persist_but_type_defaults_to_all(
+    page: Page, live_server: LiveServer
+) -> None:
+    page.goto(live_server.base_url)
+    page.get_by_role("button", name="뉴스/기관소식").click()
+    expect(page.locator("#news-list")).to_have_attribute("aria-busy", "false")
+    filter_rows = [
+        page.locator('.news-filter-row[aria-label="자료 종류"]'),
+        page.locator('.news-filter-row[aria-label="기간"]'),
+        page.locator('.news-filter-row[aria-label="출처"]'),
+        page.locator('.news-filter-row[aria-label="분류"]'),
+    ]
+    row_tops = [locator.bounding_box()["y"] for locator in filter_rows]
+    assert row_tops == sorted(row_tops) and len(set(row_tops)) == 4
+
+    page.get_by_role("button", name="뉴스", exact=True).click()
+    page.get_by_label("매일경제", exact=True).uncheck()
+    page.get_by_label("경제", exact=True).uncheck()
+    page.reload()
+    page.get_by_role("button", name="뉴스/기관소식").click()
+
+    expect(page.locator('[data-news-type=""]')).to_have_attribute("aria-pressed", "true")
+    expect(page.get_by_label("매일경제", exact=True)).not_to_be_checked()
+    expect(page.get_by_label("경제", exact=True)).not_to_be_checked()
+    expect(page.get_by_label("한국경제", exact=True)).to_be_checked()
+    expect(page.get_by_label("IT", exact=True)).to_be_checked()
 
 
 def test_initial_news_load_reads_status_before_list(

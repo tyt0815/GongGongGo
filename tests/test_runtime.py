@@ -18,6 +18,18 @@ def close_runtime_log_handlers():
             handler.close()
 
 
+def test_restart_script_only_kills_the_loopback_server_and_uses_hidden_startup():
+    script = (Path(__file__).parents[1] / "ggg_restart.bat").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'findstr /R /C:"127.0.0.1:8000 .*LISTENING"' in script
+    assert "taskkill /PID %SERVER_PID% /F" in script
+    assert "taskkill /IM python.exe" not in script
+    assert 'wscript.exe "%~dp0ggg_startup.vbs"' in script
+    assert "http://127.0.0.1:8000/health" in script
+
+
 def test_browser_opens_only_after_health_succeeds():
     health_check = Mock(side_effect=[ConnectionError(), 200])
     opener = Mock()

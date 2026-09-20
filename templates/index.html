@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>공공고 - 채용 공고</title>
-    <link rel="stylesheet" href="/static/app.css">
-    <link rel="stylesheet" href="/static/news.css">
+    <link rel="stylesheet" href="/static/app.css?v=20260825-1">
+    <link rel="stylesheet" href="/static/news.css?v=20260825-1">
 </head>
 <body>
     <main class="dashboard-shell">
@@ -107,48 +107,39 @@
             </section>
 
             <section class="news-toolbar" aria-label="뉴스 필터">
-                <div class="news-periods" role="group" aria-label="기간">
+                <div class="news-filter-row news-types" role="group" aria-label="자료 종류">
+                    <button type="button" class="selected" data-news-type="" aria-pressed="true">전체</button>
+                    <button type="button" data-news-type="newspaper" aria-pressed="false">뉴스</button>
+                    <button type="button" data-news-type="institution" aria-pressed="false">기관소식</button>
+                </div>
+                <div class="news-filter-row news-periods" role="group" aria-label="기간">
                     <button type="button" class="selected" data-news-period="today" aria-pressed="true">오늘</button>
                     <button type="button" data-news-period="yesterday" aria-pressed="false">어제</button>
                     <button type="button" data-news-period="3d" aria-pressed="false">최근 3일</button>
                     <button type="button" data-news-period="7d" aria-pressed="false">최근 7일</button>
                     <button type="button" data-news-period="30d" aria-pressed="false">최근 30일</button>
                 </div>
-                <label>자료 종류
-                    <select id="news-type-filter">
-                        <option value="">전체 유형</option>
-                        <option value="newspaper">뉴스</option>
-                        <option value="institution">기관소식</option>
-                    </select>
-                </label>
-                <label>출처
-                    <select id="news-source-filter">
-                        <option value="">전체 출처</option>
-                        <option value="hankyung">한국경제</option>
-                        <option value="mk">매일경제</option>
-                        <option value="reb">한국부동산원</option>
-                        <option value="kodit">신용보증기금</option>
-                        <option value="kogas">한국가스공사</option>
-                    </select>
-                </label>
-                <label>분류
-                    <select id="news-category-filter">
-                        <option value="">전체 카테고리</option>
-                        <option value="주요뉴스">주요뉴스</option>
-                        <option value="정치">정치</option>
-                        <option value="경제">경제</option>
-                        <option value="사회">사회</option>
-                        <option value="IT">IT</option>
-                        <option value="세계">세계</option>
-                        <option value="보도자료">보도자료</option>
-                        <option value="정기 통계">정기 통계</option>
-                    </select>
-                </label>
-                <label class="news-search-label">제목 검색
-                    <input id="news-search-input" type="search" placeholder="제목 검색">
-                </label>
+                <div class="news-filter-row news-checkboxes" role="group" aria-label="출처">
+                    <label><input type="checkbox" name="news-source" value="hankyung" checked> 한국경제</label>
+                    <label><input type="checkbox" name="news-source" value="mk" checked> 매일경제</label>
+                    <label><input type="checkbox" name="news-source" value="reb" checked> 한국부동산원</label>
+                    <label><input type="checkbox" name="news-source" value="kodit" checked> 신용보증기금</label>
+                    <label><input type="checkbox" name="news-source" value="kogas" checked> 한국가스공사</label>
+                </div>
+                <div class="news-filter-row news-checkboxes" role="group" aria-label="분류">
+                    <label><input type="checkbox" name="news-category" value="주요뉴스" checked> 주요뉴스</label>
+                    <label><input type="checkbox" name="news-category" value="정치" checked> 정치</label>
+                    <label><input type="checkbox" name="news-category" value="경제" checked> 경제</label>
+                    <label><input type="checkbox" name="news-category" value="사회" checked> 사회</label>
+                    <label><input type="checkbox" name="news-category" value="IT" checked> IT</label>
+                    <label><input type="checkbox" name="news-category" value="세계" checked> 세계</label>
+                    <label><input type="checkbox" name="news-category" value="보도자료" checked> 보도자료</label>
+                    <label><input type="checkbox" name="news-category" value="정기 통계" checked> 정기 통계</label>
+                </div>
+                <input id="news-search-input" class="news-search-input" type="search" aria-label="제목 검색" placeholder="제목 검색">
             </section>
 
+            <p id="news-count" class="news-count" aria-live="polite">총 0건</p>
             <p id="news-errors" class="news-error-message" role="alert" hidden></p>
             <section id="news-list" class="news-list" aria-live="polite" aria-busy="false"></section>
         </section>
@@ -179,7 +170,7 @@
             {% endfor %}
         </section>
     </noscript>
-    <script src="/static/app.js" defer></script>
-    <script src="/static/news.js" defer></script>
+    <script src="/static/app.js?v=20260825-3" defer></script>
+    <script src="/static/news.js?v=20260825-1" defer></script>
 </body>
 </html>

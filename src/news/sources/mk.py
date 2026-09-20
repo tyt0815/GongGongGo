@@ -1,5 +1,7 @@
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
+import json
 import logging
 import re
 from urllib.parse import urljoin, urlsplit
@@ -25,6 +27,7 @@ _SECTIONS = (
     ("세계", "국제", f"{_BASE_URL}/news/world/"),
 )
 _MAIN_URL = f"{_BASE_URL}/news/"
+_MAX_ARTICLE_METADATA_REQUESTS = 100
 
 
 def parse_mk_page(html: bytes, category: str) -> tuple[tuple[CrawledNewsItem, ...], int]:
@@ -111,10 +114,99 @@ def crawl(fetcher: Callable[[str], bytes] = fetch_html) -> SourceResult:
         page_items, page_malformed = parse_mk_main_page(fetcher(_MAIN_URL), "주요뉴스")
         items.extend(page_items)
         malformed += page_malformed
+        items = _enrich_missing_published_at(items, fetcher)
     except Exception as error:
         logger.exception("News source crawl failed: source=mk")
         return SourceResult("mk", error=f"{type(error).__name__}: {error}")
     return SourceResult("mk", tuple(items), malformed)
+
+
+def parse_mk_article_published_at(html: bytes) -> datetime | None:
+    soup = BeautifulSoup(html, "html.parser")
+    metadata = soup.select_one(
+        'meta[property="article:published_time"], meta[name="article:published_time"]'
+    )
+    if metadata is not None:
+        published_at = _parse_iso_datetime(metadata.get("content"))
+        if published_at is not None:
+            return published_at
+
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            payload = json.loads(script.string or script.get_text())
+        except (TypeError, ValueError):
+            continue
+        value = _find_json_value(payload, "datePublished")
+        published_at = _parse_iso_datetime(value)
+        if published_at is not None:
+            return published_at
+    return None
+
+
+def _enrich_missing_published_at(
+    items: list[CrawledNewsItem], fetcher: Callable[[str], bytes]
+) -> list[CrawledNewsItem]:
+    known_dates = {
+        item.url: item.published_at for item in items if item.published_at is not None
+    }
+    fetched_dates: dict[str, datetime | None] = {}
+    enriched: list[CrawledNewsItem] = []
+    request_count = 0
+    for item in items:
+        if item.published_at is not None:
+            enriched.append(item)
+            continue
+        published_at = known_dates.get(item.url)
+        if published_at is None and item.url not in fetched_dates:
+            if request_count >= _MAX_ARTICLE_METADATA_REQUESTS:
+                fetched_dates[item.url] = None
+            else:
+                request_count += 1
+                try:
+                    fetched_dates[item.url] = parse_mk_article_published_at(
+                        fetcher(item.url)
+                    )
+                except Exception:
+                    logger.warning(
+                        "MK article publication metadata fetch failed: url=%s",
+                        item.url,
+                        exc_info=True,
+                    )
+                    fetched_dates[item.url] = None
+        published_at = published_at or fetched_dates.get(item.url)
+        if published_at is not None:
+            known_dates[item.url] = published_at
+            item = replace(item, published_at=published_at)
+        enriched.append(item)
+    return enriched
+
+
+def _find_json_value(value: object, key: str) -> object:
+    if isinstance(value, dict):
+        if key in value:
+            return value[key]
+        for child in value.values():
+            found = _find_json_value(child, key)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_json_value(child, key)
+            if found is not None:
+                return found
+    return None
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_SEOUL)
+    return parsed.astimezone(_SEOUL)
 
 
 def _source_category(category: str) -> str:
@@ -158,15 +250,15 @@ def _is_approved_host(hostname: str, domain: str) -> bool:
 
 
 def _parse_published_at(values: list[object]) -> datetime | None:
-    for value in values:
-        text = _collapsed_text(value)
-        if text is None:
-            continue
-        match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", text)
-        if match is None:
-            continue
-        try:
-            return datetime(*map(int, match.groups()), tzinfo=_SEOUL)
-        except ValueError:
-            return None
-    return None
+    text = " ".join(filter(None, (_collapsed_text(value) for value in values)))
+    match = re.search(
+        r"(\d{4})\.(\d{1,2})\.(\d{1,2})(?:\D+(\d{1,2}):(\d{2}))?",
+        text,
+    )
+    if match is None:
+        return None
+    parts = [int(value) for value in match.groups() if value is not None]
+    try:
+        return datetime(*parts, tzinfo=_SEOUL)
+    except ValueError:
+        return None

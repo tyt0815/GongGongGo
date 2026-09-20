@@ -62,6 +62,10 @@ class StatusRequest(LinkRequest):
     status: PostStatus
 
 
+class PinRequest(LinkRequest):
+    pinned: bool
+
+
 class SettingsRequest(Settings):
     institution_keywords: list[str]
     role_keywords: list[str]
@@ -142,6 +146,23 @@ def create_app(
             if not repository.update_status(data.link, data.status):
                 raise HTTPException(status_code=404, detail="Post not found")
             return {"link": data.link, "status": data.status.value}
+        except sqlite3.Error as exc:
+            raise _database_unavailable(exc) from exc
+
+    @app.post("/api/posts/pin")
+    def update_post_pin(request: Request, data: PinRequest) -> dict[str, bool]:
+        repository = _repository(request)
+        try:
+            post = repository.get_post(data.link)
+            if post is None:
+                raise HTTPException(status_code=404, detail="Post not found")
+            if post.status is not PostStatus.PLANNED:
+                raise HTTPException(
+                    status_code=409, detail="Only planned posts can be pinned"
+                )
+            if not repository.update_pin(data.link, data.pinned):
+                raise HTTPException(status_code=409, detail="Post status changed")
+            return {"pinned": data.pinned}
         except sqlite3.Error as exc:
             raise _database_unavailable(exc) from exc
 

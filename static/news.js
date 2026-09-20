@@ -1,9 +1,16 @@
 (() => {
   "use strict";
 
+  const FILTER_STORAGE_KEY = "gonggonggo.news.checkboxFilters";
+  const FILTER_VALUES = {
+    sources: ["hankyung", "mk", "reb", "kodit", "kogas"],
+    categories: ["주요뉴스", "정치", "경제", "사회", "IT", "세계", "보도자료", "정기 통계"],
+  };
+
   const state = {
     items: [],
     period: "today",
+    itemType: "",
     loaded: false,
     loading: false,
     listError: "",
@@ -18,6 +25,7 @@
   const jobView = byId("job-view");
   const newsView = byId("news-view");
   const newsList = byId("news-list");
+  const newsCount = byId("news-count");
   const newsCrawlButton = byId("news-crawl-button");
   const newsCrawlStatus = byId("news-crawl-status");
   const crawlError = byId("news-crawl-errors");
@@ -82,7 +90,21 @@
     return link;
   }
 
+  function selectedCheckboxValues(name) {
+    return new Set(
+      [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value),
+    );
+  }
+
+  function filteredItems() {
+    const sources = selectedCheckboxValues("news-source");
+    const categories = selectedCheckboxValues("news-category");
+    return state.items.filter((item) => sources.has(item.source) && categories.has(item.category));
+  }
+
   function renderNews() {
+    const items = filteredItems();
+    newsCount.textContent = `총 ${items.length}건`;
     newsList.replaceChildren();
     newsList.setAttribute("aria-busy", String(state.loading));
     if (state.loading) {
@@ -93,11 +115,11 @@
       newsList.append(textElement("p", state.listError, "empty-state"));
       return;
     }
-    if (!state.items.length) {
+    if (!items.length) {
       newsList.append(textElement("p", "표시할 뉴스가 없습니다.", "empty-state"));
       return;
     }
-    state.items.forEach((item) => newsList.append(createNewsRow(item)));
+    items.forEach((item) => newsList.append(createNewsRow(item)));
   }
 
   function createNewsRow(item) {
@@ -120,7 +142,7 @@
     content.className = "news-content";
     const title = document.createElement("h2");
     title.append(createExternalLink(item.title, item.url, "news-title news-title-link"));
-    content.append(title, createExternalLink("원문 보기", item.url, "news-original-link"));
+    content.append(title);
     row.append(content);
 
     const actions = document.createElement("div");
@@ -150,9 +172,7 @@
   function newsQuery() {
     const params = new URLSearchParams({ period: state.period });
     const filters = {
-      item_type: byId("news-type-filter").value,
-      source: byId("news-source-filter").value,
-      category: byId("news-category-filter").value,
+      item_type: state.itemType,
       q: byId("news-search-input").value.trim(),
     };
     Object.entries(filters).forEach(([key, value]) => {
@@ -276,6 +296,31 @@
     await refreshNews();
   }
 
+  function restoreCheckboxFilters() {
+    let saved;
+    try {
+      saved = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY));
+    } catch (_) {
+      return;
+    }
+    if (!saved || !Array.isArray(saved.sources) || !Array.isArray(saved.categories)) return;
+    const sources = new Set(saved.sources.filter((value) => FILTER_VALUES.sources.includes(value)));
+    const categories = new Set(saved.categories.filter((value) => FILTER_VALUES.categories.includes(value)));
+    document.querySelectorAll('input[name="news-source"]').forEach((input) => {
+      input.checked = sources.has(input.value);
+    });
+    document.querySelectorAll('input[name="news-category"]').forEach((input) => {
+      input.checked = categories.has(input.value);
+    });
+  }
+
+  function saveCheckboxFilters() {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+      sources: [...selectedCheckboxValues("news-source")],
+      categories: [...selectedCheckboxValues("news-category")],
+    }));
+  }
+
   function selectPrimaryTab(tab) {
     const showNews = tab === "news";
     jobView.hidden = showNews;
@@ -287,6 +332,8 @@
     });
     if (showNews) initializeNews();
   }
+
+  restoreCheckboxFilters();
 
   document.querySelectorAll("[data-primary-tab]").forEach((button) => {
     button.addEventListener("click", () => selectPrimaryTab(button.dataset.primaryTab));
@@ -302,8 +349,22 @@
       refreshNews();
     });
   });
-  ["news-type-filter", "news-source-filter", "news-category-filter"].forEach((id) => {
-    byId(id).addEventListener("change", refreshNews);
+  document.querySelectorAll("[data-news-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.itemType = button.dataset.newsType;
+      document.querySelectorAll("[data-news-type]").forEach((typeButton) => {
+        const selected = typeButton === button;
+        typeButton.classList.toggle("selected", selected);
+        typeButton.setAttribute("aria-pressed", String(selected));
+      });
+      refreshNews();
+    });
+  });
+  document.querySelectorAll('input[name="news-source"], input[name="news-category"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      saveCheckboxFilters();
+      renderNews();
+    });
   });
   byId("news-search-input").addEventListener("input", () => {
     if (state.searchTimer !== null) window.clearTimeout(state.searchTimer);

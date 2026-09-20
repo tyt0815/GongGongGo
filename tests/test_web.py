@@ -129,6 +129,28 @@ def test_status_update_uses_validated_enum(client, seeded_post: CrawledPost) -> 
     ).status_code == 422
 
 
+def test_pin_api_only_updates_planned_posts(client, seeded_post: CrawledPost) -> None:
+    assert client.post(
+        "/api/posts/pin", json={"link": seeded_post.link, "pinned": True}
+    ).status_code == 409
+
+    client.post(
+        "/api/posts/status", json={"link": seeded_post.link, "status": "planned"}
+    )
+    response = client.post(
+        "/api/posts/pin", json={"link": seeded_post.link, "pinned": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"pinned": True}
+    pinned = next(
+        post
+        for post in client.get("/api/posts").json()["posts"]
+        if post["link"] == seeded_post.link
+    )
+    assert pinned["is_pinned"] is True
+
+
 def test_acknowledge_post_clears_new_without_moving_status(
     client, seeded_post: CrawledPost
 ) -> None:

@@ -79,21 +79,24 @@ def test_dashboard_serves_external_assets_and_operational_controls(client) -> No
     """Catches a page regression that removes the interactive dashboard shell."""
     html = client.get("/").text
 
-    assert 'href="/static/app.css"' in html
-    assert 'src="/static/app.js"' in html
-    assert 'href="/static/news.css"' in html
-    assert 'src="/static/news.js"' in html
+    assert 'href="/static/app.css?v=20260825-1"' in html
+    assert 'src="/static/app.js?v=20260825-3"' in html
+    assert 'href="/static/news.css?v=20260825-1"' in html
+    assert 'src="/static/news.js?v=20260825-1"' in html
     assert 'data-primary-tab="jobs"' in html
     assert 'data-primary-tab="news"' in html
     assert 'id="job-view"' in html
     assert 'id="news-view"' in html
     assert 'data-news-period="today"' in html
     assert 'data-news-period="30d"' in html
-    assert 'id="news-type-filter"' in html
-    assert 'id="news-source-filter"' in html
-    assert 'id="news-category-filter"' in html
+    assert 'data-news-type=""' in html
+    assert 'data-news-type="newspaper"' in html
+    assert 'data-news-type="institution"' in html
+    assert 'name="news-source"' in html
+    assert 'name="news-category"' in html
     assert 'id="news-search-input"' in html
     assert 'id="news-crawl-button"' in html
+    assert 'id="news-count"' in html
     assert 'id="news-list"' in html
     assert 'data-view-group="active"' in html
     assert 'data-view-group="archive"' in html
@@ -134,21 +137,18 @@ def test_news_client_contract_keeps_news_actions_isolated_and_safe() -> None:
 def test_news_dashboard_uses_exact_filter_categories_and_labeled_view_controls(client) -> None:
     """Catches UI filters drifting from the validated API vocabulary or unlabeled panels."""
     html = client.get("/").text
-    category_options = html.split('<select id="news-category-filter">', 1)[1].split(
-        "</select>", 1
-    )[0]
-
-    assert [
-        '<option value="">전체 카테고리</option>',
-        '<option value="주요뉴스">주요뉴스</option>',
-        '<option value="정치">정치</option>',
-        '<option value="경제">경제</option>',
-        '<option value="사회">사회</option>',
-        '<option value="IT">IT</option>',
-        '<option value="세계">세계</option>',
-        '<option value="보도자료">보도자료</option>',
-        '<option value="정기 통계">정기 통계</option>',
-    ] == [line.strip() for line in category_options.splitlines() if "<option" in line]
+    assert html.count('name="news-source"') == 5
+    assert html.count('name="news-category"') == 8
+    for value in ("주요뉴스", "정치", "경제", "사회", "IT", "세계", "보도자료", "정기 통계"):
+        assert f'name="news-category" value="{value}" checked' in html
+    assert 'class="news-filter-row news-types" role="group" aria-label="자료 종류"' in html
+    assert '<legend>자료 종류</legend>' not in html
+    assert '<legend>출처</legend>' not in html
+    assert '<legend>분류</legend>' not in html
+    assert html.index('aria-label="자료 종류"') < html.index('aria-label="기간"')
+    assert html.index('aria-label="기간"') < html.index('aria-label="출처"')
+    assert html.index('aria-label="출처"') < html.index('aria-label="분류"')
+    assert 'data-news-type="" aria-pressed="true"' in html
     assert 'id="jobs-primary-tab"' in html
     assert 'id="news-primary-tab"' in html
     assert 'aria-controls="job-view"' in html
@@ -169,7 +169,7 @@ def test_news_client_contract_preserves_crawl_diagnostics_and_lifecycle() -> Non
     assert "state.crawlActive = true;" in script
     assert "scheduleNewsPolling();" in script
     assert "if (state.listError) {" in script
-    assert script.index("if (state.listError) {") < script.index("if (!state.items.length) {")
+    assert script.index("if (state.listError) {") < script.index("if (!items.length) {")
 
 
 def test_news_client_contract_invalidates_stale_results_and_keeps_date_metadata() -> None:
@@ -184,6 +184,10 @@ def test_news_client_contract_invalidates_stale_results_and_keeps_date_metadata(
     assert 'time.dateTime = item.published_at || item.discovered_at || "";' in script
     assert "toLocaleString(\"ko-KR\"" in script
     assert "수집일 기준" in script
+    assert 'createExternalLink("원문 보기"' not in script
+    assert "localStorage.getItem(FILTER_STORAGE_KEY)" in script
+    assert "localStorage.setItem(FILTER_STORAGE_KEY" in script
+    assert 'newsCount.textContent = `총 ${items.length}건`;' in script
 
 
 def test_news_client_contract_always_reports_failed_dismissals() -> None:
@@ -209,6 +213,7 @@ def test_post_api_exposes_structured_fields_and_preserves_original_title(
     assert structured["institution"] == "한국교육학술정보원"
     assert structured["display_roles"] == ["전산"]
     assert structured["original_title"] == "[한국교육학술정보원 채용] 정규직 신입 (전산/행정)"
+    assert structured["is_institution_match"] is True
 
 
 def test_post_api_exposes_parse_failed_target_as_a_fallback_card(client, dashboard_parts) -> None:
@@ -249,6 +254,12 @@ def test_client_card_contract_handles_fallback_deletion_and_completed_crawls() -
 
     assert 'post.status === "excluded" || post.deadline_kind !== "dated"' in script
     assert "deletePost(post)" in script
+    assert "togglePin(post)" in script
+    assert 'link.classList.add("institution-filtered")' in script
+    assert '"기관 필터"' not in script and '"직무 필터"' not in script
+    assert "plannedPriority(first)" in script
+    assert "if (first.status !== second.status)" in script
+    assert "if (post.is_institution_match) return post.is_pinned ? 0 : 1;" in script
     assert 'card.append(textElement("p", post.original_title, "job-meta"))' not in script
     assert 'roleElement.title = role' in script
     assert "최근 수집:" in script

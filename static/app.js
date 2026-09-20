@@ -7,6 +7,7 @@
     applied: "지원 완료",
     excluded: "제외",
   };
+  const statusOrder = Object.keys(labels);
   const state = {
     posts: [],
     settings: null,
@@ -75,6 +76,17 @@
     return button;
   }
 
+  function createPinButton(post) {
+    const button = textElement("button", "📌", "pin-button");
+    button.type = "button";
+    button.classList.toggle("selected", post.is_pinned);
+    button.setAttribute("aria-label", post.is_pinned ? "상단 고정 해제" : "상단 고정");
+    button.setAttribute("aria-pressed", String(Boolean(post.is_pinned)));
+    button.title = post.is_pinned ? "상단 고정 해제" : "상단 고정";
+    button.addEventListener("click", () => togglePin(post));
+    return button;
+  }
+
   function createCard(post) {
     const card = document.createElement("article");
     card.className = "job-card";
@@ -86,10 +98,12 @@
     link.textContent = post.display_roles?.length
       ? (post.institution || post.original_title)
       : post.original_title;
+    if (post.is_institution_match) link.classList.add("institution-filtered");
     title.append(link);
     if (post.status === "review_pending" && post.is_new) {
       title.append(textElement("span", "NEW", "new-badge"));
     }
+    if (post.status === "planned") title.append(createPinButton(post));
     card.append(title);
 
     if (post.institution) {
@@ -153,6 +167,11 @@
     return card;
   }
 
+  function plannedPriority(post) {
+    if (post.is_institution_match) return post.is_pinned ? 0 : 1;
+    return post.is_pinned ? 2 : 3;
+  }
+
   function filteredPosts() {
     const query = byId("search-input").value.trim().toLocaleLowerCase();
     const category = byId("category-filter").value;
@@ -162,6 +181,16 @@
         .filter(Boolean).join(" ").toLocaleLowerCase();
       return (!query || searchText.includes(query)) && (!category || post.category === category);
     }).sort((first, second) => {
+      if (first.status !== second.status) {
+        return statusOrder.indexOf(first.status) - statusOrder.indexOf(second.status);
+      }
+      if (first.status === "planned") {
+        const priorityDifference = plannedPriority(first) - plannedPriority(second);
+        if (priorityDifference) return priorityDifference;
+        if (first.is_pinned && second.is_pinned) {
+          return String(first.deadline_date || "9999-12-31").localeCompare(String(second.deadline_date || "9999-12-31"));
+        }
+      }
       const firstIsNew = first.status === "review_pending" && first.is_new;
       const secondIsNew = second.status === "review_pending" && second.is_new;
       if (firstIsNew !== secondIsNew) return firstIsNew ? -1 : 1;
@@ -216,6 +245,20 @@
       state.postsMutationVersion += 1;
       post.status = status;
       post.is_new = false;
+      if (status !== "planned") post.is_pinned = false;
+      renderPosts();
+    } catch (error) { showError(error.message); }
+  }
+
+  async function togglePin(post) {
+    const pinned = !post.is_pinned;
+    try {
+      await request("/api/posts/pin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: post.link, pinned }),
+      });
+      state.postsMutationVersion += 1;
+      post.is_pinned = pinned;
       renderPosts();
     } catch (error) { showError(error.message); }
   }

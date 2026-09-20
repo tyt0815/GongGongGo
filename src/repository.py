@@ -19,7 +19,13 @@ from src.domain import (
     PostStatus,
     Settings,
 )
-from src.parsing import extract_institution, filter_roles, parse_deadline, parse_title
+from src.parsing import (
+    contains_keyword,
+    extract_institution,
+    filter_roles,
+    parse_deadline,
+    parse_title,
+)
 
 
 KeywordKind = Literal["institution", "role"]
@@ -89,6 +95,9 @@ class Repository:
             should_show, roles = filter_roles(
                 parsed, institution_keywords, role_keywords
             )
+            is_institution_match = contains_keyword(
+                parsed.institution, institution_keywords
+            )
             if should_show:
                 visible.append(
                     {
@@ -101,11 +110,13 @@ class Repository:
                         "career": row["career"],
                         "roles": roles,
                         "display_roles": roles,
+                        "is_institution_match": is_institution_match,
                         "deadline_raw": row["deadline_raw"],
                         "deadline_date": row["deadline_date"],
                         "deadline_kind": DeadlineKind(row["deadline_kind"]),
                         "status": PostStatus(row["status"]),
                         "is_new": bool(row["is_new"]),
+                        "is_pinned": bool(row["is_pinned"]),
                         "discovered_at": row["discovered_at"],
                         "last_seen_at": row["last_seen_at"],
                         "status_updated_at": row["status_updated_at"],
@@ -116,9 +127,19 @@ class Repository:
     def update_status(self, link: str, status: PostStatus) -> bool:
         with self._connection() as connection, connection:
             result = connection.execute(
-                "UPDATE job_posts SET status = ?, is_new = 0, status_updated_at = ? "
-                "WHERE link = ?",
-                (status.value, _now(), link),
+                "UPDATE job_posts SET status = ?, is_new = 0, "
+                "is_pinned = CASE WHEN ? = 'planned' THEN is_pinned ELSE 0 END, "
+                "status_updated_at = ? WHERE link = ?",
+                (status.value, status.value, _now(), link),
+            )
+            return result.rowcount == 1
+
+    def update_pin(self, link: str, pinned: bool) -> bool:
+        with self._connection() as connection, connection:
+            result = connection.execute(
+                "UPDATE job_posts SET is_pinned = ? "
+                "WHERE link = ? AND status = 'planned'",
+                (int(pinned), link),
             )
             return result.rowcount == 1
 

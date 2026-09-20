@@ -275,7 +275,7 @@ def test_schema_enforces_status_deadline_concurrency_and_keyword_constraints(tmp
             )
 
 
-def test_existing_job_posts_schema_adds_non_new_flag_on_upgrade(tmp_path: Path):
+def test_existing_job_posts_schema_adds_user_flags_on_upgrade(tmp_path: Path):
     db_path = tmp_path / "gonggonggo.db"
     source = tmp_path / "job_posts.json"
     source.write_text("[]", encoding="utf-8")
@@ -316,7 +316,7 @@ def test_existing_job_posts_schema_adds_non_new_flag_on_upgrade(tmp_path: Path):
             row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
         }
         row = connection.execute(
-            "SELECT is_new FROM job_posts WHERE link = 'https://example/old'"
+            "SELECT is_new, is_pinned FROM job_posts WHERE link = 'https://example/old'"
         ).fetchone()
-    assert "is_new" in columns
-    assert row["is_new"] == 0
+    assert {"is_new", "is_pinned"} <= columns
+    assert tuple(row) == (0, 0)

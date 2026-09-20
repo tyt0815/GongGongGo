@@ -171,6 +171,32 @@ def test_review_pending_new_posts_are_listed_newest_first(repository):
     ]
 
 
+def test_planned_post_pin_persists_and_clears_when_leaving_planned(
+    repository, seeded_post
+):
+    repository.replace_keywords("role", ["software"])
+    repository.update_status(seeded_post.link, PostStatus.PLANNED)
+
+    assert repository.update_pin(seeded_post.link, True) is True
+    assert repository.list_visible_posts()[0]["is_pinned"] is True
+    assert repository.update_pin(seeded_post.link, False) is True
+    assert repository.list_visible_posts()[0]["is_pinned"] is False
+    repository.update_pin(seeded_post.link, True)
+
+    repository.upsert_crawled_posts(
+        [replace(seeded_post, title="[Target Agency] updated (software/data)")]
+    )
+    assert repository.list_visible_posts()[0]["is_pinned"] is True
+
+    repository.update_status(seeded_post.link, PostStatus.APPLIED)
+    assert repository.list_visible_posts()[0]["is_pinned"] is False
+
+
+def test_pin_rejects_a_post_outside_planned(repository, seeded_post):
+    assert repository.update_pin(seeded_post.link, True) is False
+    assert repository.update_pin("https://example.test/missing", True) is False
+
+
 def test_status_update_changes_no_crawler_owned_fields(repository, seeded_post):
     fields = (
         "category",
@@ -310,9 +336,12 @@ def test_visible_posts_apply_target_and_role_filters(repository):
 
     visible = repository.list_visible_posts()
 
-    assert [(row["link"], row["display_roles"]) for row in visible] == [
-        ("https://example.test/general-match", ("software",)),
-        ("https://example.test/target", ("accounting",)),
+    assert [
+        (row["link"], row["display_roles"], row["is_institution_match"])
+        for row in visible
+    ] == [
+        ("https://example.test/general-match", ("software",), False),
+        ("https://example.test/target", ("accounting",), True),
     ]
 
 

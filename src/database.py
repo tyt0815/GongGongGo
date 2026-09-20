@@ -76,6 +76,7 @@ def initialize_database(db_path: Path, json_path: Path) -> None:
                     status IN ('review_pending', 'planned', 'applied', 'excluded')
                 ),
                 is_new INTEGER NOT NULL DEFAULT 0 CHECK (is_new IN (0, 1)),
+                is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
                 discovered_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 status_updated_at TEXT NOT NULL
@@ -121,12 +122,18 @@ def initialize_database(db_path: Path, json_path: Path) -> None:
             """
         )
         initialize_news_schema(connection)
-        if "is_new" not in {
+        job_post_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(job_posts)")
-        }:
+        }
+        if "is_new" not in job_post_columns:
             connection.execute(
                 "ALTER TABLE job_posts ADD COLUMN is_new INTEGER NOT NULL DEFAULT 0 "
                 "CHECK (is_new IN (0, 1))"
+            )
+        if "is_pinned" not in job_post_columns:
+            connection.execute(
+                "ALTER TABLE job_posts ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0 "
+                "CHECK (is_pinned IN (0, 1))"
             )
         connection.execute(
             """

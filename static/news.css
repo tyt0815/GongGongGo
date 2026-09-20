@@ -1,4 +1,4 @@
-.primary-tabs, .news-periods, .news-toolbar, .news-metadata, .news-actions {
+.primary-tabs, .news-filter-row, .news-metadata, .news-actions {
   display: flex;
   align-items: center;
 }
@@ -8,7 +8,7 @@
   margin-bottom: 24px;
 }
 
-.primary-tabs button, .news-periods button {
+.primary-tabs button, .news-periods button, .news-types button {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #fff;
@@ -16,7 +16,7 @@
   padding: 8px 12px;
 }
 
-.primary-tabs button.selected, .news-periods button.selected {
+.primary-tabs button.selected, .news-periods button.selected, .news-types button.selected {
   border-color: #172033;
   background: #172033;
   color: #fff;
@@ -27,19 +27,32 @@
 }
 
 .news-toolbar {
-  gap: 12px;
+  display: grid;
+  gap: 8px;
   margin-bottom: 16px;
+}
+
+.news-filter-row {
+  min-width: 0;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
-.news-toolbar label {
-  display: grid;
-  gap: 5px;
-  color: #475569;
-  font-size: .9rem;
+.news-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font-size: .85rem;
+  white-space: nowrap;
 }
 
-.news-toolbar input, .news-toolbar select {
+.news-search-input {
+  width: min(100%, 520px);
   min-height: 36px;
   border: 1px solid #cbd5e1;
   border-radius: 7px;
@@ -47,17 +60,16 @@
   background: #fff;
 }
 
-.news-search-label {
-  flex: 1 1 220px;
+.news-checkboxes label:has(input:checked) {
+  border-color: #94a3b8;
+  background: #f8fafc;
 }
 
-.news-search-label input {
-  width: 100%;
-}
-
-.news-periods {
-  gap: 6px;
-  flex-wrap: wrap;
+.news-count {
+  margin: 0 0 8px;
+  color: #475569;
+  font-size: .9rem;
+  font-weight: 700;
 }
 
 .news-list {
@@ -105,17 +117,16 @@
 .news-content { min-width: 0; }
 .news-content h2 { margin: 0 0 5px; font-size: .98rem; }
 .news-title-link { color: #1d4ed8; font-weight: 800; overflow-wrap: anywhere; text-decoration: none; }
-.news-title-link:hover, .news-original-link:hover { text-decoration: underline; }
-.news-original-link { color: #526174; font-size: .84rem; }
+.news-title-link:hover { text-decoration: underline; }
 
 .news-actions { justify-content: flex-end; }
 .news-actions button { white-space: nowrap; }
 .news-error-message { margin: 0 0 12px; color: #b42318; }
 
 @media (max-width: 700px) {
-  .news-toolbar { display: grid; }
-  .news-periods { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
-  .news-periods button { white-space: nowrap; }
+  .news-types, .news-periods { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .news-types button, .news-periods button { white-space: nowrap; }
+  .news-search-input { width: 100%; }
   .news-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .news-actions { justify-content: stretch; }
   .news-actions button { width: 100%; min-height: 44px; }
