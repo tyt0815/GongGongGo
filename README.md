@@ -1,6 +1,6 @@
 # GongGongGo
 
-공공기관 채용 공고와 취업 준비용 뉴스·기관소식을 한곳에서 확인하는 Windows 로컬 전용 웹앱입니다. FastAPI 서버는 `127.0.0.1:8000`에서 먼저 응답하고, 채용과 뉴스의 시작 시 1회 크롤링은 서로 독립된 백그라운드 작업으로 진행됩니다.
+공공기관 채용 공고와 취업 준비용 뉴스·기관소식을 한곳에서 확인하는 로컬 1인용 웹앱입니다. Windows 직접 실행 시 FastAPI 서버는 `127.0.0.1:8000`에서 먼저 응답하고, 채용과 뉴스의 시작 시 1회 크롤링은 서로 독립된 백그라운드 작업으로 진행됩니다.
 
 ## 주요 기능
 
@@ -44,13 +44,36 @@ python -m venv .venv
 
 브라우저에서 <http://127.0.0.1:8000>으로 접속합니다. 설정의 `시작 시 브라우저 열기`를 켜면 다음 시작부터 `/health` 응답 후 브라우저를 엽니다. 기본값은 꺼짐입니다.
 
+## Debian Docker 실행
+
+Debian에 Docker Engine과 Compose 플러그인이 설치되고 저장소가 clone된 상태에서 실행합니다. Docker 컨테이너는 내부에서 `0.0.0.0`으로 수신하지만, Compose는 Debian 호스트의 `127.0.0.1:8000`에만 포트를 공개합니다. 직접 LAN 접속은 열리지 않습니다.
+
+먼저 기존 Windows 서버와 자동 시작 작업을 중지하고, `data/gonggonggo.db`와 `data/job_posts.json`을 Debian clone의 `data/`로 복사합니다. 서버가 실행 중일 때 DB 본체만 복사하지 마십시오. `job_posts.json`은 clone에도 있지만 운영 원본을 함께 보관합니다.
+
+Debian의 저장소 폴더에서 실행합니다. Windows의 `data/`와 `logs/`는 Docker 이미지에 포함되지 않고, Debian 호스트 폴더가 컨테이너에 연결됩니다. 현재 Debian 사용자 ID로 실행하므로 이 폴더에 쓰기 권한이 있어야 합니다.
+
+```sh
+mkdir -p data logs
+APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
+curl http://127.0.0.1:8000/health
+docker compose logs --tail=100 gonggonggo
+```
+
+주 컴퓨터에서 SSH 터널을 연 상태로 브라우저의 <http://127.0.0.1:8000>에 접속합니다. `user`와 `debian-host`는 Debian SSH 계정과 주소로 바꿉니다. 주 컴퓨터의 기존 서버가 8000 포트를 사용 중이면 먼저 종료합니다.
+
+```sh
+ssh -N -L 8000:127.0.0.1:8000 user@debian-host
+```
+
+앱 설정의 `시작 시 브라우저 열기`는 서버 노트북에서는 필요하지 않으므로 꺼 두는 편이 좋습니다. 종료는 `docker compose stop`, 코드 변경 반영은 `docker compose up -d --build`로 합니다. 백업할 때는 먼저 `docker compose stop`을 실행한 뒤 `data/gonggonggo.db`와 `data/job_posts.json`을 함께 복사합니다.
+
 작업 스케줄러처럼 창 없이 실행하려면 `ggg_startup.vbs`를 직접 등록하는 것이 가장 조용합니다. 기존 작업 스케줄러가 `ggg_startup.bat`을 가리키고 있어도 BAT가 VBS에 실행을 넘기고 즉시 끝납니다.
 
 ```powershell
 wscript.exe .\ggg_startup.vbs
 ```
 
-두 실행 경로 모두 `logs/gonggonggo-YYYY-MM-DD.log`에 같은 앱 로그를 남깁니다. 실행 중인 로컬 서버만 강제 종료한 뒤 숨김 모드로 다시 시작하려면 `ggg_restart.bat`을 실행합니다. 이 스크립트는 다른 Python 프로세스를 종료하지 않고 `127.0.0.1:8000`의 PID만 종료하며 `/health` 성공까지 확인합니다. 서버는 로컬 주소에만 바인딩되며 외부 접속용 인증이나 배포 기능은 없습니다.
+두 Windows 실행 경로 모두 `logs/gonggonggo-YYYY-MM-DD.log`에 같은 앱 로그를 남깁니다. 실행 중인 로컬 서버만 강제 종료한 뒤 숨김 모드로 다시 시작하려면 `ggg_restart.bat`을 실행합니다. 이 스크립트는 다른 Python 프로세스를 종료하지 않고 `127.0.0.1:8000`의 PID만 종료하며 `/health` 성공까지 확인합니다. Windows 직접 실행과 Debian Docker의 호스트 포트는 로컬 주소에만 열리며 외부 접속용 인증은 없습니다.
 
 ## 뉴스/기관소식
 

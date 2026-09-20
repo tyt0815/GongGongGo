@@ -53,6 +53,7 @@ def test_run_does_not_create_opener_thread_when_persisted_setting_is_false(
     json_path.write_text("[]", encoding="utf-8")
     calls: list[tuple[object, str, int]] = []
 
+    monkeypatch.delenv("GONGGONGGO_BIND_HOST", raising=False)
     monkeypatch.setattr(runtime, "DB_PATH", db_path)
     monkeypatch.setattr(runtime, "JSON_PATH", json_path)
     monkeypatch.setattr(runtime, "LOG_DIR", tmp_path / "logs")
@@ -72,6 +73,31 @@ def test_run_does_not_create_opener_thread_when_persisted_setting_is_false(
     runtime.run(app)
 
     assert calls == [(app, "127.0.0.1", 8000)]
+
+
+def test_run_uses_container_bind_host_when_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    db_path = tmp_path / "gonggonggo.db"
+    json_path = tmp_path / "job_posts.json"
+    json_path.write_text("[]", encoding="utf-8")
+    calls: list[tuple[object, str, int]] = []
+
+    monkeypatch.setenv("GONGGONGGO_BIND_HOST", "0.0.0.0")
+    monkeypatch.setattr(runtime, "DB_PATH", db_path)
+    monkeypatch.setattr(runtime, "JSON_PATH", json_path)
+    monkeypatch.setattr(runtime, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(runtime, "configure_logging", lambda log_dir: None)
+    monkeypatch.setattr(
+        runtime.uvicorn,
+        "run",
+        lambda app, host, port, **kwargs: calls.append((app, host, port)),
+    )
+
+    app = object()
+    runtime.run(app)
+
+    assert calls == [(app, "0.0.0.0", 8000)]
 
 
 def test_run_logs_a_uvicorn_bind_failure_to_the_dated_file(

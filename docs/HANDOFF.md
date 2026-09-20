@@ -1,10 +1,10 @@
 # GongGongGo 인수인계
 
-최종 갱신: 2026-08-25
+최종 갱신: 2026-09-20
 
 ## 현재 단계
 
-2026-08-03 전체 개선 설계와 2026-08-25 뉴스 Inbox 설계가 구현되었습니다. 앱은 SQLite를 사용하고 서버 준비와 백그라운드 크롤링을 분리하며, 채용 상태 관리와 짧게 보관하는 뉴스·기관소식 Inbox를 제공합니다.
+2026-08-03 전체 개선 설계와 2026-08-25 뉴스 Inbox 설계가 구현되었습니다. 앱은 SQLite를 사용하고 서버 준비와 백그라운드 크롤링을 분리하며, 채용 상태 관리와 짧게 보관하는 뉴스·기관소식 Inbox를 제공합니다. 2026-09-20에는 Debian Docker Compose 실행 설정을 추가했습니다.
 
 승인된 인터페이스는 [전체 개선 설계](superpowers/specs/2026-08-03-gonggonggo-modernization-design.md)와 [뉴스 Inbox 설계](superpowers/specs/2026-08-25-news-inbox-design.md)에 있습니다. 범위 변경은 없었으므로 `AGENTS.md`의 핵심 제약은 그대로 유효합니다.
 
@@ -30,12 +30,13 @@
 - `ggg_startup.vbs`: 숨김 실행, `ggg_startup.bat`: 기존 스케줄러용 VBS 래퍼
 - `ggg_restart.bat`: loopback 8000 포트의 PID만 종료하고 숨김 재시작한 뒤 `/health`를 확인하는 운영 재시작
 - `ggg_debug.bat`: `main.py --debug`으로 콘솔과 Playwright Chromium GUI를 함께 표시하는 디버그 실행
+- `Dockerfile`, `compose.yaml`, `.dockerignore`: Debian에서 Python 3.12·Playwright Chromium을 설치하고 호스트의 `data/`·`logs/`를 연결하는 실행 설정
 - `tests/`: 파서·DB·저장소·크롤러·관리자·API·UI 계약 테스트
 - `tests/e2e/test_dashboard_layout.py`: 임시 DB/JSON, 무네트워크 관리자와 실제 Chromium을 사용하는 loopback E2E
 
 ## 중요한 동작과 불변 조건
 
-- 앱은 `127.0.0.1:8000`에만 바인딩합니다.
+- Windows 직접 실행은 `127.0.0.1:8000`에 바인딩합니다. Docker 실행은 컨테이너 안에서 `0.0.0.0:8000`으로 수신하고 Debian 호스트의 `127.0.0.1:8000`에만 포트를 공개합니다. 다른 PC에서는 SSH 터널로 접근합니다.
 - lifespan은 저장소를 준비하고 시작 크롤링을 예약하지만 완료를 기다리지 않고 요청을 받습니다.
 - 크롤러는 기존 행의 수집 소유 필드만 갱신하며 `status`와 `status_updated_at`을 덮지 않습니다.
 - 신규 크롤링 insert는 `is_new=1`로 저장되어 검토 대기 상단에 최신순으로 표시됩니다. 기존 DB 행과 JSON 마이그레이션 행은 `is_new=0`입니다.
@@ -62,6 +63,8 @@
 운영 파일은 `data/job_posts.json`과 런타임 `data/gonggonggo.db`입니다. 뉴스도 같은 DB 파일 안의 독립 `news_items`, `news_dismissals` 테이블을 사용하지만 채용 행을 갱신하지 않습니다. 테스트는 항상 `tmp_path` 아래에 별도 JSON과 DB를 만들며 Naver와 뉴스 출처에 접근하지 않는 fake를 사용합니다. 운영 상태 변경, 영구 삭제, 차단 해제, 뉴스 처리 완료 테스트에 운영 DB를 사용하지 마십시오.
 
 백업은 서버를 종료한 상태에서 JSON과 DB를 함께 복사합니다. 실행 중에는 WAL sidecar가 존재할 수 있으므로 DB 본체만 복사하지 않습니다. `.gitignore`는 DB, DB sidecar, 로그, `.superpowers/` 작업 산출물을 제외합니다.
+
+Debian 이전 시 기존 Windows 서버와 자동 시작 작업을 중지하고 두 운영 파일을 clone의 `data/`로 복사합니다. Compose는 호스트 `data/`와 `logs/`를 연결하며, 컨테이너 실행 사용자 ID는 `APP_UID`·`APP_GID`로 호스트 사용자에 맞춥니다. Docker 이미지 빌드 컨텍스트에서 운영 데이터와 로그는 제외합니다. 실행·SSH 접속 명령은 README의 Debian Docker 실행 절에 있습니다. 이 Windows 작업 환경에는 Docker CLI가 없어 실제 이미지 빌드와 컨테이너 시작 검증은 Debian에서 수행해야 합니다.
 
 ## 검증 경로
 

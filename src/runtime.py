@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 import urllib.request
@@ -54,7 +55,12 @@ def run(app: FastAPI) -> None:
                 args=(_APP_URL, _HEALTH_URL),
                 daemon=True,
             ).start()
-        uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+        uvicorn.run(
+            app,
+            host=os.environ.get("GONGGONGGO_BIND_HOST", "127.0.0.1"),
+            port=8000,
+            log_config=None,
+        )
     except KeyboardInterrupt:
         raise
     except BaseException:

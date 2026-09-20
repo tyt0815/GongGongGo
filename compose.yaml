@@ -1,0 +1,15 @@
+services:
+  gonggonggo:
+    build: .
+    init: true
+    restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    shm_size: 1gb
+    environment:
+      GONGGONGGO_BIND_HOST: 0.0.0.0
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
